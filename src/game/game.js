@@ -748,6 +748,12 @@ export class Game {
     if (!window.__noRender) {
       this.daynight.prepare();
       this.post.render(dt, this.time);
+      // 阴影贴图在第一次渲染时才创建：之后交给自写着色器（草、花瓣、水面）
+      if (!U.uShadowOn.value && this.sun.shadow.map) {
+        U.uShadowMap.value = this.sun.shadow.map.texture;
+        U.uShadowMatrix.value = this.sun.shadow.matrix;
+        U.uShadowOn.value = 1;
+      }
     }
     input.endFrame();
   }

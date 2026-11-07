@@ -3,8 +3,8 @@ const SETTINGS_KEY = 'sakuragawa.settings.v1';
 const SAVE_KEY = 'sakuragawa.save.v1';
 
 export const QUALITY = {
-  low: { name: '流畅', pixelRatio: 0.9, msaa: 0, shadow: 1024, softShadow: false, bloom: false, grass: 0.28, petals: 0.45, cards: 0.55, drawFar: 0.8 },
-  medium: { name: '均衡', pixelRatio: 1.25, msaa: 4, shadow: 2048, softShadow: true, bloom: true, bloomScale: 0.4, grass: 0.62, petals: 0.75, cards: 0.85, drawFar: 1 },
+  low: { name: '流畅', pixelRatio: 0.9, msaa: 0, shadow: 1024, softShadow: false, bloom: false, grass: 0.2, petals: 0.45, cards: 0.55, drawFar: 0.8 },
+  medium: { name: '均衡', pixelRatio: 1.25, msaa: 4, shadow: 2048, softShadow: true, bloom: true, bloomScale: 0.4, grass: 0.55, petals: 0.75, cards: 0.85, drawFar: 1 },
   high: { name: '精致', pixelRatio: 1.75, msaa: 4, shadow: 3072, softShadow: true, bloom: true, bloomScale: 0.5, grass: 1, petals: 1, cards: 1, drawFar: 1 },
 };
 

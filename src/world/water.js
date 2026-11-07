@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { U, GLSL_COMMON } from '../render/shaders.js';
+import { U, GLSL_COMMON, SHADOW_GLSL, shadowUniforms } from '../render/shaders.js';
 import { river, riverWaterLevel, riverHalfWidth, isCanal, WORLD, FIELDS, SITES } from './layout.js';
 import { lakeShoreRadius } from './terrain.js';
 
@@ -21,8 +21,9 @@ function waterMaterial(mode) {
       uFogBase: U.uFogBase,
       uFogSun: U.uSunDir,
       uMode: { value: mode },
-      uDeep: { value: new THREE.Color(mode === 2 ? '#4f6e66' : '#2f6b6e') },
-      uShallow: { value: new THREE.Color(mode === 2 ? '#8a8f6a' : '#6fa59c') },
+      uDeep: { value: new THREE.Color(mode === 2 ? '#4a5f55' : '#28504d') },
+      uShallow: { value: new THREE.Color(mode === 2 ? '#7d7f5e' : '#587a6c') },
+      ...shadowUniforms(),
     },
     vertexShader: /* glsl */ `
       attribute vec2 aFlow; // x: across 0..1, y: along (m)
@@ -39,6 +40,7 @@ function waterMaterial(mode) {
     `,
     fragmentShader: /* glsl */ `
       ${GLSL_COMMON}
+      ${SHADOW_GLSL}
       uniform float uTime, uDay, uNight, uMode, uFogDensity, uFogBase;
       uniform vec3 uSunDir, uSunColor, uZenith, uHorizon, uLantern, uDeep, uShallow, uFogColor, uFogSunColor, uFogSun;
       varying vec2 vFlow; varying vec3 vWorld; varying float vDepth;
@@ -79,10 +81,15 @@ function waterMaterial(mode) {
         vec3 N = normalize(vec3((h0 - hx) * 1.6 * calm, 1.0, (h0 - hz) * 1.6 * calm));
         N = normalize(mix(N, vec3(0.0, 1.0, 0.0), smoothstep(60.0, 260.0, dist)));
         vec3 R = reflect(-V, N);
-        float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);
-        fres = mix(0.06, 1.0, fres);
+        float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
         vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y, 0.0, 1.0), 0.6));
-        float sunSpec = pow(max(dot(R, uSunDir), 0.0), 220.0) * 5.0 + pow(max(dot(R, uSunDir), 0.0), 18.0) * 0.25;
+        // 贴近护岸处，倒影里是墙与树，而不是天空
+        if (uMode < 0.5) {
+          float edge = min(vFlow.x, 1.0 - vFlow.x);
+          sky *= mix(0.42, 1.0, smoothstep(0.02, 0.32, edge) * 0.7 + smoothstep(0.0, 0.5, R.y) * 0.3);
+        }
+        float shade = sunShadow(vWorld + vec3(0.0, 0.05, 0.0), 0.0006);
+        float sunSpec = (pow(max(dot(R, uSunDir), 0.0), 220.0) * 5.0 + pow(max(dot(R, uSunDir), 0.0), 18.0) * 0.25) * shade;
         vec3 body = mix(uShallow, uDeep, smoothstep(0.1, 2.5, vDepth));
         body *= (0.35 + 0.65 * uDay) * vec3(1.0) + uNight * vec3(0.02, 0.03, 0.06);
         vec3 col = mix(body, sky, fres * (uMode > 1.5 ? 0.95 : 0.8));

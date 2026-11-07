@@ -43,6 +43,7 @@ vec3 applyPattern(vec3 col, inout float emis, inout vec3 emisCol, inout float ro
     float row = gridLine(uv.y / 0.33, 0.07);
     float v = hash12(floor(vec2(tx, uv.y / 0.33)));
     col *= (0.70 + 0.40 * ridge) * (1.0 - 0.30 * row) * (0.93 + 0.14 * v);
+    col *= 0.88 + 0.2 * vnoise(uv * 0.45 + 3.0);
     rough = 0.5;
   } else if (id == 2) {
     float py = uv.y / 0.21;
@@ -50,6 +51,8 @@ vec3 applyPattern(vec3 col, inout float emis, inout vec3 emisCol, inout float ro
     float bv = hash12(vec2(floor(py), floor(uv.x / 2.3 + floor(py) * 0.37)));
     float grain = vnoise(vec2(uv.x * 1.3, py * 7.0));
     col *= (0.84 + 0.2 * bv) * (0.9 + 0.14 * grain) * (1.0 - 0.38 * l);
+    float wl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(col, vec3(wl) * vec3(0.95, 0.93, 0.9), 0.18 * smoothstep(0.35, 0.85, vnoise(uv * vec2(0.6, 0.25) + 5.0)));
   } else if (id == 3) {
     float g = max(gridLine(uv.x / 0.30, 0.05), gridLine(uv.y / 0.24, 0.055));
     col = mix(col, vec3(0.09, 0.05, 0.025), g);
@@ -71,6 +74,7 @@ vec3 applyPattern(vec3 col, inout float emis, inout vec3 emisCol, inout float ro
     p.x += floor(p.y) * 0.5;
     float jn = max(gridLine(p.x, 0.025), gridLine(p.y, 0.05));
     col *= (1.0 - 0.28 * jn) * (0.93 + 0.1 * hash12(floor(p))) * (0.9 + 0.12 * vnoise(uv * 1.3));
+    col *= 1.0 - 0.12 * smoothstep(0.55, 0.9, vnoise(vec2(uv.x * 2.1, uv.y * 0.5) + 2.0));
   } else if (id == 7) {
     vec2 q = uv;
     float fw = 0.07;
@@ -107,7 +111,10 @@ vec3 applyPattern(vec3 col, inout float emis, inout vec3 emisCol, inout float ro
     rough = 0.55;
   } else if (id == 13) {
     col *= 0.94 + 0.08 * vnoise(uv * 1.6) + 0.04 * vnoise(uv * 8.0);
-    col *= mix(0.86, 1.0, smoothstep(0.0, 0.6, uv.y));
+    // 雨水顺墙留下的竖向污渍与墙脚的溅泥
+    float streak = smoothstep(0.5, 0.9, vnoise(vec2(uv.x * 3.3, uv.y * 0.32 + 7.0))) * (0.6 + 0.4 * vnoise(vec2(uv.x * 11.0, 1.0)));
+    col *= 1.0 - 0.11 * streak;
+    col *= mix(0.78, 1.0, smoothstep(0.0, 0.75, uv.y));
   } else if (id == 14) {
     float rib = gridLine(uv.y * 8.0, 0.09);
     col *= 1.0 - 0.28 * rib;
@@ -165,7 +172,22 @@ export function createWorldMaterial() {
       diffuseColor.rgb *= 0.95 + 0.1 * vnoise(vWPos.xz * 2.3 + vWPos.y * 1.7);
     `,
     fragmentRoughness: 'roughnessFactor = gRough;',
-    fragmentEmissive: 'totalEmissiveRadiance += gEmisCol * gEmis * (int(vPat.z + 0.5) == 15 ? 1.0 : uNight);',
+    fragmentEmissive: /* glsl */ `
+      {
+        int pid = int(vPat.z + 0.5);
+        // 夜里的窗与店面：按位置有亮有暗，不再整排一样亮
+        float lit = 1.0;
+        if (pid == 3 || pid == 4 || pid == 7) {
+          float hsh = hash12(floor(vWPos.xz * 0.22) + floor(vWPos.y * 0.3) * 7.1);
+          // 约三分之一已经熄灯，四分之一微亮，其余明亮
+          lit = hsh < 0.35 ? 0.05 : hsh < 0.6 ? 0.3 : 0.9;
+        } else if (pid == 0) {
+          float hsh = hash12(floor(vWPos.xz * 0.2) + 3.7);
+          lit = hsh < 0.3 ? 0.12 : 0.55 + 0.45 * hsh;
+        }
+        totalEmissiveRadiance += gEmisCol * gEmis * lit * (pid == 15 ? 1.0 : uNight);
+      }
+    `,
   });
   return mat;
 }

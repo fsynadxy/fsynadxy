@@ -107,7 +107,9 @@ export class World {
       ['铺设大地', () => {
         const sak = this.forest.sakura.map((t) => ({ x: t.x, z: t.z, r: 9 * t.scale }));
         if (this.forest.ancient) sak.push({ x: this.forest.ancient.x, z: this.forest.ancient.z, r: 17 });
-        this.terrain.computeColors(sak.map((t) => [t.x, t.z, t.r]));
+        const occ = this.lots.map((l) => l.fp);
+        for (const it of this.colliders.items) if (it.type === 'box' && it.tag !== 'low' && it.hw * it.hd > 1.5 && it.hw * it.hd < 1200) occ.push(it);
+        this.terrain.computeColors(sak.map((t) => [t.x, t.z, t.r]), occ);
         this.terrainMat = createTerrainMaterial();
         for (const m of this.terrain.buildMeshes(this.terrainMat)) this.group.add(m);
         this.terrainTex = this.terrain.buildTextures();

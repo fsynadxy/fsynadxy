@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { U, GLSL_COMMON } from '../render/shaders.js';
+import { U, GLSL_COMMON, SHADOW_GLSL, shadowUniforms } from '../render/shaders.js';
 import { FOG_GLSL, fogUniforms } from './petals.js';
 import { RNG } from '../core/math.js';
 
@@ -63,9 +63,9 @@ export class GroundCover {
     };
     this.shared = base;
     this.layers = [];
-    this.makeGrass(base, Math.round(26000 * quality.grass));
+    this.makeGrass(base, Math.round(30000 * quality.grass));
     this.makeFlowers(base, Math.round(5200 * quality.grass + 1200));
-    this.makeGroundPetals(base, Math.round(9000 * quality.petals));
+    this.makeGroundPetals(base, Math.round(13000 * quality.petals));
   }
   instanced(geo, count, tile, rng, extra = 4) {
     const g = new THREE.InstancedBufferGeometry();
@@ -83,76 +83,109 @@ export class GroundCover {
     return g;
   }
   makeGrass(base, count) {
-    // 一簇三片草叶，每片 2 段
-    const pos = [], tip = [], idx = [];
+    // 一簇四片细长的草叶，每片三段、略带弯曲；aNrm 为叶面法线（局部），用于受光与逆光透光
+    const pos = [], tip = [], nrm = [], idx = [];
     const rng = new RNG(3);
-    for (let b = 0; b < 3; b++) {
+    for (let b = 0; b < 4; b++) {
       const a = rng.float(0, Math.PI * 2);
-      const ox = Math.cos(a) * 0.08, oz = Math.sin(a) * 0.08;
+      const r0 = rng.float(0.03, 0.13);
+      const ox = Math.cos(a) * r0, oz = Math.sin(a) * r0;
       const dir = rng.float(0, Math.PI * 2);
       const dx = Math.cos(dir), dz = Math.sin(dir);
-      const w = 0.05;
+      const w = rng.float(0.014, 0.021);
+      const lean = rng.float(0.12, 0.34);
+      const hs = rng.float(0.75, 1.0);
       const base0 = pos.length / 3;
-      const rows = [[0, w], [0.55, w * 0.7], [1, 0]];
+      const rows = [[0, w], [0.38, w * 0.85], [0.72, w * 0.55], [1, 0]];
       for (const [t, ww] of rows) {
-        const bend = t * t * 0.25;
-        pos.push(ox - dz * ww + dx * bend, t, oz + dx * ww + dz * bend);
+        const bend = t * t * lean;
+        const cx = ox + dx * bend, cz = oz + dz * bend, cy = t * hs;
+        pos.push(cx - dz * ww, cy, cz + dx * ww);
         tip.push(t);
+        nrm.push(dx, 0.35 + t * 0.4, dz);
         if (ww > 0) {
-          pos.push(ox + dz * ww + dx * bend, t, oz - dx * ww + dz * bend);
+          pos.push(cx + dz * ww, cy, cz - dx * ww);
           tip.push(t);
+          nrm.push(dx, 0.35 + t * 0.4, dz);
         }
       }
-      idx.push(base0, base0 + 1, base0 + 2, base0 + 1, base0 + 3, base0 + 2, base0 + 2, base0 + 3, base0 + 4);
+      // 行：0-1, 2-3, 4-5, 6(尖)
+      idx.push(base0, base0 + 1, base0 + 2, base0 + 1, base0 + 3, base0 + 2);
+      idx.push(base0 + 2, base0 + 3, base0 + 4, base0 + 3, base0 + 5, base0 + 4);
+      idx.push(base0 + 4, base0 + 5, base0 + 6);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('aTip', new THREE.Float32BufferAttribute(tip, 1));
+    geo.setAttribute('aNrm', new THREE.Float32BufferAttribute(nrm, 3));
     geo.setIndex(idx);
-    const tile = 52;
+    const tile = 46;
     const g = this.instanced(geo, count, tile, new RNG(21));
-    const uniforms = { ...base, uTile: { value: tile } };
+    const uniforms = { ...base, ...shadowUniforms(), uTile: { value: tile } };
     const mat = new THREE.ShaderMaterial({
       uniforms,
       vertexShader: /* glsl */ `
         ${GLSL_COMMON}
         ${HEIGHT_GLSL}
-        attribute vec2 aOff; attribute vec4 aRnd; attribute float aTip;
+        ${SHADOW_GLSL}
+        attribute vec2 aOff; attribute vec4 aRnd; attribute float aTip; attribute vec3 aNrm;
         uniform vec3 uCam; uniform float uTile, uTime, uGust; uniform vec2 uWind;
-        varying vec3 vCol; varying float vTip; varying vec3 vWorld; varying float vFade;
+        varying vec3 vCol; varying float vTip; varying vec3 vWorld; varying vec3 vNrm; varying float vShadow;
         void main(){
           ${tiledPosition()}
           vec4 gr = groundAt(wxz);
           float dens = gr.a * maskAt(wxz);
-          float fade = 1.0 - smoothstep(uTile * 0.32, uTile * 0.5, dist);
-          float h = (0.28 + aRnd.x * 0.42) * smoothstep(aRnd.y * 0.9, aRnd.y * 0.9 + 0.12, dens) * fade;
+          float fade = 1.0 - smoothstep(uTile * 0.3, uTile * 0.5, dist);
+          // 草高：大片区域有修剪过的矮草与自然生长的高草
+          float patchH = vnoise(wxz * 0.07 + 13.0);
+          float h = (0.16 + aRnd.x * 0.3 + patchH * 0.22) * smoothstep(aRnd.y * 0.9, aRnd.y * 0.9 + 0.12, dens) * fade;
           float rot = aRnd.z * 6.2832;
           float c = cos(rot), s = sin(rot);
+          mat2 R = mat2(c, -s, s, c);
           vec3 p = position;
-          p.xz = mat2(c, -s, s, c) * p.xz;
+          p.xz = R * p.xz;
           p.y *= h;
-          p.xz *= 0.8 + aRnd.w * 0.6;
+          p.xz *= (0.8 + aRnd.w * 0.5) * (0.6 + h * 0.9);
           float n = vnoise(wxz * 0.18 + vec2(uTime * 0.6, uTime * 0.25));
-          vec2 sway = uWind * (0.15 + n * 0.35 + uGust * 0.5) * aTip * aTip * h;
+          vec2 sway = uWind * (0.12 + n * 0.3 + uGust * 0.45) * aTip * aTip * h;
           p.xz += sway;
           p.y -= length(sway) * 0.3;
           vec3 world = vec3(wxz.x, hAt(wxz) - 0.02, wxz.y) + p;
           vWorld = world;
           vTip = aTip;
-          vCol = pow(gr.rgb, vec3(2.2));
-          vFade = fade;
+          vec3 nn = aNrm; nn.xz = R * nn.xz;
+          vNrm = nn;
+          // 颜色：取地面色，再按位置混入深绿、黄绿与少量枯黄
+          vec3 g0 = pow(gr.rgb, vec3(2.2));
+          float v1 = vnoise(wxz * 0.31 + 4.0), v2 = aRnd.w;
+          vec3 deep = g0 * vec3(0.72, 0.86, 0.78);
+          vec3 fresh = g0 * vec3(1.08, 1.1, 0.82);
+          vec3 dry = mix(g0, vec3(0.42, 0.36, 0.17), 0.55);
+          vec3 cc = mix(deep, fresh, smoothstep(0.25, 0.75, v1 * 0.7 + v2 * 0.5));
+          cc = mix(cc, dry, smoothstep(0.82, 0.98, v2) * 0.8 + smoothstep(0.7, 0.9, patchH) * 0.25);
+          vCol = cc;
+          // 阴影：在叶片中部取样一次
+          vShadow = sunShadow(vec3(world.x, world.y + 0.12, world.z), 0.0007);
           gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
         }
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 uSunDir, uSunColor, uHemiSky, uHemiGround; uniform float uDay, uNight;
-        varying vec3 vCol; varying float vTip; varying vec3 vWorld; varying float vFade;
+        varying vec3 vCol; varying float vTip; varying vec3 vWorld; varying vec3 vNrm; varying float vShadow;
         ${FOG_GLSL}
         void main(){
-          vec3 base = vCol * mix(0.62, 1.12, vTip) + vec3(0.03, 0.035, 0.0) * vTip;
-          float l = max(uSunDir.y, 0.0) * 0.75 + 0.25;
-          vec3 col = base * (mix(uHemiGround, uHemiSky, 0.65) * 0.45 + uSunColor * l * 0.62 * uDay);
-          col += base * uSunColor * pow(vTip, 2.0) * 0.12 * uDay;
+          vec3 n = normalize(vNrm);
+          if (!gl_FrontFacing) n.xz = -n.xz;
+          vec3 V = normalize(cameraPosition - vWorld);
+          float ndl = max(dot(n, uSunDir), 0.0);
+          float wrap = clamp(dot(n, uSunDir) * 0.5 + 0.5, 0.0, 1.0);
+          // 逆光时叶片透出黄绿的光
+          float trans = pow(max(dot(-V, uSunDir), 0.0), 4.0) * smoothstep(0.1, 0.8, vTip);
+          float ao = mix(0.32, 1.0, smoothstep(0.0, 0.85, vTip));
+          vec3 base = vCol * mix(0.7, 1.08, vTip);
+          vec3 amb = mix(uHemiGround, uHemiSky, 0.45 + 0.4 * vTip) * 0.6 * ao;
+          vec3 sun = uSunColor * uDay * vShadow * (ndl * 0.4 + wrap * 0.45 + 0.12) * ao;
+          vec3 col = base * (amb + sun) + base * vec3(1.05, 1.15, 0.6) * uSunColor * uDay * vShadow * trans * 0.55;
           gl_FragColor = vec4(applyFog2(col, vWorld), 1.0);
         }
       `,
@@ -185,33 +218,35 @@ export class GroundCover {
     geo.setIndex(idx);
     const tile = 44;
     const g = this.instanced(geo, count, tile, new RNG(77));
-    const uniforms = { ...base, uTile: { value: tile } };
+    const uniforms = { ...base, ...shadowUniforms(), uTile: { value: tile } };
     const mat = new THREE.ShaderMaterial({
       uniforms,
       vertexShader: /* glsl */ `
         ${GLSL_COMMON}
         ${HEIGHT_GLSL}
+        ${SHADOW_GLSL}
         attribute vec2 aOff; attribute vec4 aRnd;
         uniform vec3 uCam; uniform float uTile, uTime; uniform vec2 uWind;
-        varying vec2 vUv; varying vec3 vCol; varying vec3 vWorld;
+        varying vec2 vUv; varying vec3 vCol; varying vec3 vWorld; varying float vShadow;
         void main(){
           ${tiledPosition()}
           vec4 gr = groundAt(wxz);
           float fade = 1.0 - smoothstep(uTile * 0.3, uTile * 0.5, dist);
           float vis = step(0.55, gr.a * maskAt(wxz)) * step(aRnd.y, 0.85) * fade;
-          float sc = (0.8 + aRnd.x * 0.8) * vis;
+          float sc = (0.6 + aRnd.x * 0.55) * vis;
           vec3 p = position * sc;
           p.xz += uWind * sin(uTime * 2.0 + aRnd.z * 20.0) * 0.02 * position.y * 6.0;
           vec3 world = vec3(wxz.x, hAt(wxz) - 0.01, wxz.y) + p;
           vWorld = world; vUv = uv;
           float k = aRnd.w;
-          vCol = k < 0.38 ? vec3(1.0, 0.82, 0.12) : k < 0.7 ? vec3(0.98, 0.98, 0.95) : k < 0.86 ? vec3(0.55, 0.42, 0.85) : vec3(1.0, 0.62, 0.72);
+          vCol = k < 0.38 ? vec3(0.92, 0.74, 0.16) : k < 0.7 ? vec3(0.9, 0.9, 0.86) : k < 0.86 ? vec3(0.5, 0.42, 0.72) : vec3(0.92, 0.62, 0.7);
+          vShadow = sunShadow(world + vec3(0.0, 0.1, 0.0), 0.0007);
           gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
         }
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 uSunColor, uHemiSky; uniform float uDay, uNight;
-        varying vec2 vUv; varying vec3 vCol; varying vec3 vWorld;
+        varying vec2 vUv; varying vec3 vCol; varying vec3 vWorld; varying float vShadow;
         ${FOG_GLSL}
         void main(){
           vec3 col;
@@ -227,7 +262,7 @@ export class GroundCover {
             if (r > petals) discard;
             col = mix(vCol, vec3(1.0, 0.85, 0.3), smoothstep(0.3, 0.0, r) * 0.7);
           }
-          col *= uHemiSky * 0.5 + uSunColor * 0.6 * uDay + 0.04;
+          col *= uHemiSky * 0.45 + uSunColor * 0.6 * uDay * vShadow + 0.02;
           gl_FragColor = vec4(applyFog2(col, vWorld), 1.0);
         }
       `,
@@ -244,18 +279,19 @@ export class GroundCover {
     geo.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5], 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
     geo.setIndex([0, 2, 1, 0, 3, 2]);
-    const tile = 40;
+    const tile = 30;
     const g = this.instanced(geo, count, tile, new RNG(99));
-    const uniforms = { ...base, uTile: { value: tile } };
+    const uniforms = { ...base, ...shadowUniforms(), uTile: { value: tile } };
     const mat = new THREE.ShaderMaterial({
       uniforms,
       vertexShader: /* glsl */ `
         ${GLSL_COMMON}
         ${HEIGHT_GLSL}
+        ${SHADOW_GLSL}
         attribute vec2 aOff; attribute vec4 aRnd;
         uniform vec3 uCam; uniform float uTile;
         uniform sampler2D uDensity; uniform vec4 uDRect;
-        varying vec2 vUv; varying vec3 vWorld; varying float vTone;
+        varying vec2 vUv; varying vec3 vWorld; varying float vTone; varying float vShadow;
         void main(){
           ${tiledPosition()}
           vec2 duv = (wxz - uDRect.xy) / uDRect.z;
@@ -265,24 +301,27 @@ export class GroundCover {
           float vis = smoothstep(aRnd.y, aRnd.y + 0.1, dens * 1.6) * fade * step(0.5, maskAt(wxz));
           float rot = aRnd.z * 6.2832;
           float c = cos(rot), s = sin(rot);
-          vec3 p = position * vec3(0.09, 1.0, 0.07) * vis * (0.8 + aRnd.x * 0.6);
+          vec3 p = position * vec3(0.042, 1.0, 0.034) * vis * (0.8 + aRnd.x * 0.5);
           p.xz = mat2(c, -s, s, c) * p.xz;
           vec3 world = vec3(wxz.x, hAt(wxz) + 0.03 + aRnd.w * 0.02, wxz.y) + p;
           vWorld = world; vUv = uv; vTone = aRnd.w;
+          vShadow = sunShadow(world + vec3(0.0, 0.1, 0.0), 0.0007);
           gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
         }
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 uSunColor, uHemiSky; uniform float uDay, uNight;
-        varying vec2 vUv; varying vec3 vWorld; varying float vTone;
+        varying vec2 vUv; varying vec3 vWorld; varying float vTone; varying float vShadow;
         ${FOG_GLSL}
         void main(){
           vec2 q = vUv * 2.0 - 1.0;
           float d = length(q * vec2(1.0, 1.0 + q.y * 0.4));
           float notch = step(length(q - vec2(0.0, 0.95)), 0.22);
           if (d > 0.95 || notch > 0.5) discard;
-          vec3 base = mix(vec3(1.0, 0.72, 0.8), vec3(1.0, 0.93, 0.95), vTone);
-          vec3 col = base * (uHemiSky * 0.45 + uSunColor * 0.62 * uDay + 0.03);
+          vec3 base = mix(vec3(0.95, 0.68, 0.74), vec3(0.98, 0.9, 0.9), vTone);
+          float al = dot(uHemiSky, vec3(0.2126, 0.7152, 0.0722));
+          vec3 amb = mix(uHemiSky, vec3(al), 0.6);
+          vec3 col = base * (amb * 0.42 + uSunColor * 0.62 * uDay * vShadow + 0.02);
           gl_FragColor = vec4(applyFog2(col, vWorld), 1.0);
         }
       `,

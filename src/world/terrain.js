@@ -419,16 +419,33 @@ export class Terrain {
 
   // ---------- 着色 ----------
   // sakuraPts: [[x,z,r], ...] 用于在树下铺一层花瓣
-  computeColors(sakuraPts, isBuildingAt) {
+  // occluders: [{ x, z, hw, hd, rot }]：建筑与实体，周围的地面略暗（环境光遮蔽）
+  computeColors(sakuraPts, occluders = []) {
     const { xs, n, H, cls, petal } = this;
     const col = new Float32Array(n * n * 3);
+    const ao = new Float32Array(n * n).fill(1);
+    for (const o of occluders) {
+      const r = Math.hypot(o.hw, o.hd) + 2.8;
+      const i0 = this.indexOf(o.x - r), i1 = this.indexOf(o.x + r) + 1;
+      const j0 = this.indexOf(o.z - r), j1 = this.indexOf(o.z + r) + 1;
+      const cc = Math.cos(o.rot || 0), ss = Math.sin(o.rot || 0);
+      for (let j = Math.max(0, j0); j <= Math.min(n - 1, j1); j++)
+        for (let i = Math.max(0, i0); i <= Math.min(n - 1, i1); i++) {
+          const dx = xs[i] - o.x, dz = xs[j] - o.z;
+          const lx = dx * cc - dz * ss, lz = dx * ss + dz * cc;
+          const d = Math.hypot(Math.max(Math.abs(lx) - o.hw, 0), Math.max(Math.abs(lz) - o.hd, 0));
+          const v = 0.66 + 0.34 * smoothstep(0, 2.7, d);
+          const k = j * n + i;
+          if (v < ao[k]) ao[k] = v;
+        }
+    }
     const c = new THREE.Color();
     const P = {
-      grassA: new THREE.Color('#8fb45c'), grassB: new THREE.Color('#a9c063'), grassC: new THREE.Color('#6d9a4c'),
-      grassDry: new THREE.Color('#b9b47b'), dirt: new THREE.Color('#a68a67'), gravel: new THREE.Color('#d6d0c3'),
+      grassA: new THREE.Color('#86a857'), grassB: new THREE.Color('#9bb35e'), grassC: new THREE.Color('#5f8b46'),
+      grassDry: new THREE.Color('#ada46c'), dirt: new THREE.Color('#a68a67'), gravel: new THREE.Color('#d6d0c3'),
       sand: new THREE.Color('#d9c9a3'), bed: new THREE.Color('#7f7c6a'), mud: new THREE.Color('#6b5842'),
       rock: new THREE.Color('#8a877b'), forest: new THREE.Color('#4a6438'), forestB: new THREE.Color('#5d7a3f'),
-      yard: new THREE.Color('#c4a983'), pink: new THREE.Color('#f2c9d2'), clover: new THREE.Color('#7fb35e'),
+      yard: new THREE.Color('#c4a983'), pink: new THREE.Color('#f2c9d2'), clover: new THREE.Color('#73a556'),
       snow: new THREE.Color('#e8edf2'),
     };
     // 樱花点的网格索引
@@ -544,6 +561,8 @@ export class Terrain {
         petal[k] = pv;
         if (pv > 0) c.lerp(P.pink, pv * 0.32);
         if (h < 30 && slope < 0.5 && klass === 0) c.lerp(P.grassDry, clamp(-nz1 - 0.35, 0, 0.4));
+        // 环境光遮蔽：建筑四周与樱树冠下
+        c.multiplyScalar(ao[k] * (1 - 0.13 * smoothstep(0.35, 1.0, pv)));
         col[k * 3] = c.r;
         col[k * 3 + 1] = c.g;
         col[k * 3 + 2] = c.b;
@@ -702,10 +721,10 @@ export function createTerrainMaterial() {
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.97, metalness: 0 });
   patchMaterial(mat, {
     key: 'terrain',
-    uniforms: ['uNight', 'uTime'],
+    uniforms: ['uNight', 'uTime', 'uSunDir'],
     vertexHead: 'attribute vec2 aPetal;\nvarying float vPetal;\nvarying float vForest;\nvarying vec3 vWPos;\n',
     vertexEnd: 'vPetal = aPetal.x;\nvForest = aPetal.y;\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
-    fragmentHead: 'varying float vPetal;\nvarying float vForest;\nvarying vec3 vWPos;\n',
+    fragmentHead: 'varying float vPetal;\nvarying float vForest;\nvarying vec3 vWPos;\nuniform vec3 uSunDir;\n',
     fragmentColor: /* glsl */ `
       {
         vec2 p = vWPos.xz;
@@ -713,6 +732,22 @@ export function createTerrainMaterial() {
         float n2 = vnoise(p * 1.9 + 7.0);
         float n3 = vnoise(p * 7.0 + 3.0);
         diffuseColor.rgb *= 0.9 + 0.12 * n1 + 0.08 * n2 + 0.05 * (n3 - 0.5);
+        // 近处的细碎纹理：草地上的明暗斑点与零星露土
+        float camD = length(vWPos - cameraPosition);
+        float near = 1.0 - smoothstep(6.0, 45.0, camD);
+        float green = diffuseColor.g / max(diffuseColor.r * 0.8 + diffuseColor.b * 0.6, 1e-3);
+        // 中远景：大尺度的深浅与冷暖起伏，草坡不再是一整片均匀的绿
+        float m1 = vnoise(p * 0.045 + 31.0), m2 = vnoise(p * 0.013 - 7.0);
+        vec3 macro = mix(vec3(0.86, 0.92, 0.84), vec3(1.07, 1.03, 0.9), m1);
+        macro *= mix(0.9, 1.06, m2);
+        diffuseColor.rgb *= mix(vec3(1.0), macro, step(1.05, green));
+        // 草丛底下：叶片遮挡的阴影（与草地的覆盖范围衔接）
+        float under = (1.0 - smoothstep(14.0, 30.0, camD)) * step(1.15, green) * (1.0 - vPetal * 0.5);
+        diffuseColor.rgb *= mix(1.0, 0.74, under);
+        float speck = vnoise(p * 23.0) * 0.6 + vnoise(p * vec2(61.0, 47.0)) * 0.4;
+        diffuseColor.rgb *= mix(1.0, 0.8 + 0.32 * speck, near);
+        float soil = smoothstep(0.66, 0.82, vnoise(p * 2.7 + 17.0) * 0.7 + vnoise(p * 11.0) * 0.3) * step(1.1, green);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 0.96, 0.78), soil * 0.35);
         // scattered petals
         float pet = smoothstep(0.62, 0.8, vnoise(p * 4.3 + 11.0)) * vPetal + smoothstep(0.7, 0.85, vnoise(p * 9.0 - 4.0)) * vPetal * 0.7;
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.66, 0.72), clamp(pet, 0.0, 0.85));
@@ -722,9 +757,17 @@ export function createTerrainMaterial() {
           vec2 cell = floor(q); vec2 f = fract(q) - 0.5;
           float h = hash12(cell);
           vec2 o = vec2(hash12(cell + 1.7), hash12(cell + 4.1)) - 0.5;
-          float crown = smoothstep(0.55, 0.1, length(f - o * 0.4));
-          vec3 tone = h < 0.55 ? vec3(0.07, 0.14, 0.06) : h < 0.93 ? vec3(0.18, 0.3, 0.1) : vec3(0.55, 0.42, 0.44);
-          vec3 forestCol = mix(tone * 0.55, tone, crown) * (0.85 + 0.3 * vnoise(p * 0.05));
+          vec2 rel = f - o * 0.4;
+          float rr = length(rel);
+          float crown = smoothstep(0.55, 0.1, rr);
+          vec3 tone = h < 0.55 ? vec3(0.07, 0.13, 0.065) : h < 0.93 ? vec3(0.15, 0.25, 0.1) : vec3(0.5, 0.4, 0.42);
+          // 树冠是一团团的半球：朝阳一侧亮、背阳一侧暗；远处降低对比，避免闪烁成拼布
+          vec3 cn = normalize(vec3(rel.x * 2.4, sqrt(max(0.0, 0.32 - rr * rr)) + 0.2, rel.y * 2.4));
+          float lit = clamp(dot(cn, uSunDir) * 0.55 + 0.6, 0.3, 1.25);
+          float farK = smoothstep(250.0, 1100.0, camD);
+          crown = mix(crown, 0.6, farK * 0.7);
+          lit = mix(lit, 0.85, farK * 0.6);
+          vec3 forestCol = mix(tone * 0.42, tone * lit, crown) * (0.82 + 0.34 * vnoise(p * 0.05));
           diffuseColor.rgb = mix(diffuseColor.rgb, forestCol, vForest * 0.85);
         }
       }

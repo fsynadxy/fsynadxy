@@ -19,6 +19,10 @@ export const U = {
   uHemiGround: { value: new THREE.Color('#8a8a5a') },
   uLanternColor: { value: new THREE.Color('#ffb36b') },
   uFinale: { value: 0 }, // 集齐御朱印后千年桜点灯
+  // 太阳阴影贴图（第一次渲染后由 Game 填入），供草、花瓣、水面等自写着色器采样
+  uShadowMap: { value: null },
+  uShadowMatrix: { value: new THREE.Matrix4() },
+  uShadowOn: { value: 0 },
 };
 // 雾专用别名（避免与其它补丁里的 uSunDir 重复声明）
 U.uFogSun = U.uSunDir;
@@ -33,6 +37,22 @@ float vnoise(vec2 p){
 }
 float fbmN(vec2 p){ float s = 0.0, a = 0.5; for(int i=0;i<4;i++){ s += a*vnoise(p); p = p*2.03 + 17.1; a *= 0.5; } return s; }
 `;
+// 手动采样太阳阴影（单点，供顶点着色器或简单片元使用）：1 = 受光，0 = 阴影
+export const SHADOW_GLSL = /* glsl */ `
+#include <packing>
+uniform sampler2D uShadowMap; uniform mat4 uShadowMatrix; uniform float uShadowOn;
+float sunShadow(vec3 wp, float bias){
+  if (uShadowOn < 0.5) return 1.0;
+  vec4 sc = uShadowMatrix * vec4(wp, 1.0);
+  vec3 c = sc.xyz / sc.w;
+  if (c.x < 0.0 || c.x > 1.0 || c.y < 0.0 || c.y > 1.0 || c.z > 1.0) return 1.0;
+  float d = unpackRGBAToDepth(texture2D(uShadowMap, c.xy));
+  return step(c.z - bias, d);
+}
+`;
+export function shadowUniforms() {
+  return { uShadowMap: U.uShadowMap, uShadowMatrix: U.uShadowMatrix, uShadowOn: U.uShadowOn };
+}
 // fragment-only helpers (derivatives)
 export const GLSL_FRAG = /* glsl */ `
 // anti-aliased grid line: x in cell units, w = half width in cell units
