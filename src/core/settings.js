@@ -42,6 +42,8 @@ export const settings = Object.assign(
     invertY: false,
     pointerLock: false,
     showHints: true,
+    view: 'first', // first | third
+    headBob: true,
   },
   read(SETTINGS_KEY) || {}
 );

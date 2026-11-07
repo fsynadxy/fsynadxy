@@ -16,6 +16,7 @@ const ACTIONS = {
   pause: ['Escape'],
   walkToggle: ['KeyC'],
   hide: ['KeyH'],
+  view: ['KeyV'],
   lantern: ['KeyF'],
   zoomIn: ['Equal', 'NumpadAdd'],
   zoomOut: ['Minus', 'NumpadSubtract'],
@@ -146,9 +147,9 @@ export class Input {
     const btn = (i) => gp.buttons[i] && gp.buttons[i].pressed;
     const res = {
       lx: dz(gp.axes[0] || 0), ly: dz(gp.axes[1] || 0), rx: dz(gp.axes[2] || 0), ry: dz(gp.axes[3] || 0),
-      a: btn(0), b: btn(1), x: btn(2), y: btn(3), lb: btn(4), rb: btn(5), lt: btn(6), rt: btn(7), back: btn(8), start: btn(9), ls: btn(10),
+      a: btn(0), b: btn(1), x: btn(2), y: btn(3), lb: btn(4), rb: btn(5), lt: btn(6), rt: btn(7), back: btn(8), start: btn(9), ls: btn(10), rs: btn(11),
     };
-    const map = { a: 'jump', x: 'interact', y: 'book', back: 'map', start: 'pause', rb: 'photo' };
+    const map = { a: 'jump', x: 'interact', y: 'book', back: 'map', start: 'pause', rb: 'photo', rs: 'view' };
     for (const k in map) {
       if (res[k] && !this.gpPrev[k]) this.virtualPressed.add(map[k]);
       this.gpPrev[k] = res[k];

@@ -1,48 +1,102 @@
+// 玩法回归（第一人称）：走路、八个御朱印、七只猫、所有镇民对话、视角切换、对话首句不被跳过
+// 用法：先开 vite 开发服务器（5173），再 NODE_PATH=/opt/node-tools/node_modules node tools/functest.cjs
+// 每个目标：重新读取位置 → 在附近找一个站得住的位置 → 视线对准 → 检查提示 → 按交互 → 等界面定时器触发后复位
 const { chromium } = require('playwright');
-const fs = require('fs');
 (async () => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
   page.setDefaultTimeout(900000);
-  const logs = [];
-  page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
-  page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack}`));
-  await page.goto('http://localhost:5173/?q=low&fresh&shot&play', { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__game && window.__game.ready, null, { timeout: 300000, polling: 500 }); await page.evaluate(() => { window.__noRender = true; });
-  const step = async (n, before) => page.evaluate(`(() => { { ${before || ''}; } for (let i = 0; i < ${n}; i++) window.__game.frame(1 / 30); const g = window.__game; return { pos: g.player.pos.toArray().map((v) => +v.toFixed(2)), mode: g.mode, pmode: g.player.mode, ui: g.ui.open, stamps: Object.keys(g.state.stamps), cats: Object.keys(g.state.cats), prompt: document.querySelector('.hud-prompt span').textContent, promptOff: document.querySelector('.hud-prompt').classList.contains('off') }; })()`);
-  const r = [];
-  // 1 walk forward
-  r.push(['walk', await step(60, "window.__game.input.down.add('KeyW')")]);
-  r.push(['stop', await step(10, "window.__game.input.down.delete('KeyW')")]);
-  // 2 teleport to each stamp and interact
-  const stamps = await page.evaluate(() => window.__game.world.ctx.interact.filter((i) => i.kind === 'stamp').map((i) => [i.stamp.id, i.x, i.z]));
-  for (const [id, x, z] of stamps) {
-    const res = await step(2, `const g=window.__game; g.ui.closePanel(true); g.player.spawn((${x}), (${z}), 0); const st=g.world.ctx.stamps.find(s=>s.id==='${id}'); g.player.yaw=Math.atan2(st.x-(${x}), st.z-(${z}));`);
-    const res2 = await step(2, "window.__game.input.pressVirtual('interact')");
-    r.push(['stamp ' + id, res.prompt, res.promptOff, res2.stamps.length, res2.ui]);
-  }
-  await step(30, "window.__game.ui.closePanel(true)");
-  // 3 cats
-  const cats = await page.evaluate(() => window.__game.cats.map((c) => [c.def.id, c.pos.x, c.pos.z]));
-  for (const [id, x, z] of cats) {
-    const res = await step(2, `const g=window.__game; g.ui.closePanel(true); g.player.mode='walk'; g.player.spawn((${x}) + 1.0, (${z}) + 0.4, 0); g.player.yaw=Math.atan2(-1.0,-0.4);`);
-    const res2 = await step(3, "window.__game.input.pressVirtual('interact')");
-    r.push(['cat ' + id, res.prompt, res.promptOff, res2.cats.length, res2.pmode]);
-    await step(80);
-  }
-  // 4 NPC talk
-  const npcs = await page.evaluate(() => window.__game.npcs.filter((n) => n.talkable).map((n) => [n.def.id, n.pos.x, n.pos.z]));
-  for (const [id, x, z] of npcs) {
-    const res = await step(2, `const g=window.__game; g.mode='play'; g.ui.el.dialog.classList.add('hidden'); g.player.mode='walk'; g.player.spawn((${x}) + 1.2, (${z}) + 0.6, 0); g.player.yaw=Math.atan2(-1.2,-0.6);`);
-    const res2 = await step(3, "window.__game.input.pressVirtual('interact')");
-    const txt = await page.evaluate(() => document.querySelector('.dl-name').textContent + ' | ' + document.querySelector('.dl-text').textContent);
-    r.push(['npc ' + id, res.prompt, res2.mode, txt.slice(0, 40)]);
-    await step(40, "for (let k=0;k<4;k++) window.__game.ui.advanceDialog();");
-  }
-  const st = await page.evaluate(() => ({ train: window.__game.world.train.state, s: window.__game.world.train.s.toFixed(1), finale: window.__game.state.finale, pending: window.__game.pendingFinale, kitten: window.__game.kitten.active }));
-  r.push(['state', JSON.stringify(st)]);
-  await page.evaluate(() => { window.__noRender = false; window.__game.frame(1/30); }); await page.screenshot({ path: 'shots/func-end.png', timeout: 600000 });
-  for (const x of r) console.log(JSON.stringify(x));
-  for (const l of logs) if (!l.includes('useProgram') && !l.includes('[debug]')) console.log(l.slice(0, 1500));
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(`[pageerror] ${e.message}\n${e.stack}`));
+  page.on('console', (m) => { if (m.type() === 'error') errs.push(`[console.error] ${m.text()}`); });
+  await page.goto('http://localhost:5173/?q=low&fresh&shot&play&t=10.5', { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__game && window.__game.ready, null, { timeout: 300000, polling: 500 });
+  await page.evaluate(() => {
+    window.__noRender = true;
+    const g = window.__game;
+    if (!g.rig.firstPerson) g.setView('first', false);
+    window.__step = (n) => { for (let i = 0; i < n; i++) g.frame(1 / 30); };
+    window.__reset = () => {
+      g.ui.closePanel(true);
+      if (g.ui.dlg) { g.ui.dlg = null; g.ui.el.dialog.classList.add('hidden'); }
+      const f = document.getElementById('fortune'); if (f) f.classList.add('hidden');
+      g.mode = 'play'; g.player.mode = 'walk'; g.player.seat = null; g.rig.follow();
+      window.__step(5);
+    };
+  });
+  const settle = async () => { await page.waitForTimeout(2800); await page.evaluate(() => window.__reset()); };
+
+  // 走路
+  const walk = await page.evaluate(() => {
+    const g = window.__game; const p0 = g.player.pos.clone();
+    g.input.down.add('KeyW'); window.__step(60); g.input.down.delete('KeyW'); window.__step(10);
+    return +p0.distanceTo(g.player.pos).toFixed(2);
+  });
+  console.log('walk distance', walk, walk > 3 ? 'OK' : 'FAIL');
+
+  const tryTarget = (kind, id) => page.evaluate(([kind, id]) => {
+    const g = window.__game, THREE = g.camera.position.constructor;
+    const find = () => {
+      if (kind === 'stamp') return g.interactables().find((q) => q.kind === 'stamp' && q.stamp.id === id);
+      if (kind === 'cat') return g.interactables().find((q) => q.kind === 'cat' && q.cat.def.id === id);
+      return g.interactables().find((q) => q.kind === 'npc' && q.npc.def.id === id);
+    };
+    const offs = [];
+    for (const r of [1.1, 1.5, 0.7, 1.9]) for (let a = 0; a < 8; a++) offs.push([Math.cos(a * Math.PI / 4) * r, Math.sin(a * Math.PI / 4) * r]);
+    for (const [ox, oz] of offs) {
+      let it = find();
+      g.player.mode = 'walk';
+      g.player.spawn(it.x + ox, it.z + oz, 0);
+      window.__step(2);
+      if (Math.hypot(g.player.pos.x - it.x - ox, g.player.pos.z - it.z - oz) > 0.3) continue; // 站不住
+      it = find();
+      const P = g.aimPoint(it);
+      g.rig.snap(g.focusPoint());
+      const d = P.clone().sub(g.rig.eye);
+      g.rig.yaw = Math.atan2(-d.x, -d.z);
+      g.rig.fpPitch = Math.atan2(d.y, Math.hypot(d.x, d.z));
+      window.__step(2);
+      const got = g.findInteract();
+      const want = find();
+      const same = got && got.kind === want.kind && (got.stamp || got.cat || got.npc) === (want.stamp || want.cat || want.npc);
+      if (!same) continue;
+      const prompt = document.querySelector('.hud-prompt span').textContent;
+      g.input.pressVirtual('interact');
+      window.__step(1);
+      const typing = g.ui.dlg ? g.ui.dlg.typing : null;
+      window.__step(3);
+      let ok;
+      if (kind === 'stamp') ok = !!g.state.stamps[id];
+      else if (kind === 'cat') ok = !!g.state.cats[id];
+      else ok = g.mode === 'dialog' && typing === true;
+      return { id, ok, prompt, off: [+ox.toFixed(1), +oz.toFixed(1)] };
+    }
+    return { id, ok: false, reason: 'no spot / not targeted' };
+  }, [kind, id]);
+
+  const ids = await page.evaluate(() => ({
+    stamps: window.__game.world.ctx.stamps.map((s) => s.id),
+    cats: window.__game.cats.map((c) => c.def.id),
+    npcs: window.__game.npcs.filter((n) => n.talkable).map((n) => n.def.id),
+  }));
+  const res = { stamp: [], cat: [], npc: [] };
+  for (const id of ids.stamps) { res.stamp.push(await tryTarget('stamp', id)); await settle(); }
+  for (const id of ids.cats) { res.cat.push(await tryTarget('cat', id)); await settle(); }
+  for (const id of ids.npcs) { res.npc.push(await tryTarget('npc', id)); await settle(); }
+  for (const k of ['stamp', 'cat', 'npc']) for (const r of res[k]) console.log(k.padEnd(5), r.ok ? 'OK  ' : 'FAIL', JSON.stringify(r));
+
+  // 视角切换与第三人称交互仍可用
+  const view = await page.evaluate(() => {
+    const g = window.__game;
+    g.setView('third', false); window.__step(5);
+    const third = !g.rig.firstPerson && !g.player.ghost;
+    g.setView('first', false); window.__step(5);
+    return { third, first: g.rig.firstPerson && g.player.ghost };
+  });
+  console.log('view toggle', JSON.stringify(view));
+  const st = await page.evaluate(() => ({ stamps: Object.keys(window.__game.state.stamps).length, cats: Object.keys(window.__game.state.cats).length, kitten: window.__game.kitten.active, finale: window.__game.state.finale }));
+  const nOk = (a) => a.filter((r) => r.ok).length + '/' + a.length;
+  console.log('SUMMARY stamps', nOk(res.stamp), 'cats', nOk(res.cat), 'npcs', nOk(res.npc), JSON.stringify(st));
+  console.log(errs.length ? errs.join('\n') : 'no page errors');
   await browser.close();
 })();

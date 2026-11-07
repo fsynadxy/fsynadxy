@@ -7,7 +7,7 @@ import { DayNight } from './daynight.js';
 import { CameraRig } from './camera.js';
 import { Input } from '../core/input.js';
 import { AudioEngine } from '../core/audio.js';
-import { settings, QUALITY, loadGame, saveGame, clearGame } from '../core/settings.js';
+import { settings, saveSettings, QUALITY, loadGame, saveGame, clearGame } from '../core/settings.js';
 import { SPAWN, REGIONS, SITES, riverNearest, FIELDS } from '../world/layout.js';
 import { Player } from '../entities/player.js';
 import { createNPCs } from '../entities/npcs.js';
@@ -138,7 +138,10 @@ export class Game {
   bindEvents() {
     const A = this.audio;
     this.player.on('step', (e) => A.step(e.surface, e.run));
-    this.player.on('land', (k) => A.land(k));
+    this.player.on('land', (k) => {
+      A.land(k);
+      this.rig.land(k);
+    });
     this.player.on('boundary', () => this.ui.subtitle('再往前就是深山了。回小镇去吧。', 3200));
     this.player.on('blocked', () => {
       if (this.time - (this._blockT ?? -10) > 6) {
@@ -200,6 +203,8 @@ export class Game {
       this.rig.follow();
       this.rig.yaw = this.player.yaw + Math.PI;
       this.rig.pitch = 0.28;
+      this.rig.fpPitch = 0.04;
+      this.rig.aim = null;
       this.rig.snap(this.focusPoint());
       this.ui.showHUD(true);
       this.ui.hintStart = performance.now();
@@ -244,7 +249,7 @@ export class Game {
     } else if (!on && this.mode === 'photo') {
       this.mode = 'play';
       this.rig.follow();
-      this.camera.fov = 55;
+      this.camera.fov = this.rig.firstPerson ? this.rig.fpFov() : 55;
       this.camera.updateProjectionMatrix();
       this.ui.photoMode(false);
       this.setFilter(0);
@@ -281,9 +286,26 @@ export class Game {
     return this.world.ctx.stamps.map((s) => ({ kind: 'stamp', x: s.x, z: s.z, done: !!this.state.stamps[s.id] }));
   }
   focusPoint() {
-    const p = this.player.pos;
-    const y = this.player.mode === 'sit' && this.player.seat ? this.player.seat.y + 1.25 : p.y + 1.45;
+    const pl = this.player;
+    const p = pl.pos;
+    if (this.rig && this.rig.firstPerson) {
+      // 眼高：站 1.52 m、坐 1.1 m、蹲下抚摸猫 0.9 m，浅水里随身体下沉
+      let y = p.y + 1.52 - pl.inWater * 0.35;
+      if (pl.mode === 'sit' && pl.seat) y = pl.seat.y + 1.12;
+      else if (pl.mode === 'pet') y = p.y + 0.9;
+      return new THREE.Vector3(p.x, y, p.z);
+    }
+    const y = pl.mode === 'sit' && pl.seat ? pl.seat.y + 1.25 : p.y + 1.45;
     return new THREE.Vector3(p.x, y, p.z);
+  }
+  // 切换第一/第三人称
+  setView(v, announce = true) {
+    this.rig.setView(v);
+    settings.view = this.rig.view;
+    saveSettings();
+    this.rig.snap(this.focusPoint());
+    if (announce) this.ui.subtitle(this.rig.firstPerson ? '第一人称视角' : '第三人称视角', 1400);
+    this.ui.setCrosshair(this.rig.firstPerson);
   }
   applyProgressVisuals() {
     U.uFinale.value = this.state.finale ? 1 : 0;
@@ -361,29 +383,67 @@ export class Game {
     for (const b of ctx.benches) {
       if (b.occupied === undefined) b.occupied = this.npcs.some((n) => (n.def.behavior === 'sit') && Math.hypot(n.pos.x - b.x, n.pos.z - b.z) < 1.0);
       if (b.occupied) continue;
-      list.push({ kind: 'bench', bench: b, x: b.x + Math.sin(b.rot) * 0.55, y: b.y, z: b.z + Math.cos(b.rot) * 0.55, r: 1.5, label: '坐一会儿' });
+      list.push({ kind: 'bench', bench: b, x: b.x + Math.sin(b.rot) * 0.55, y: b.y, z: b.z + Math.cos(b.rot) * 0.55, aimY: b.y + 0.45, r: 1.5, label: '坐一会儿' });
     }
-    for (const n of this.npcs) if (n.talkable) list.push({ kind: 'npc', npc: n, x: n.pos.x, y: n.pos.y, z: n.pos.z, r: n.def.behavior === 'sit' ? 3.2 : 2.6, label: '交谈 · ' + n.def.name });
-    for (const c of this.cats) list.push({ kind: 'cat', cat: c, x: c.pos.x, y: c.pos.y, z: c.pos.z, r: 1.8, label: c.found ? '摸摸' + c.def.name : '摸摸这只猫' });
+    for (const n of this.npcs) {
+      if (!n.talkable) continue;
+      const low = n.def.behavior === 'sit' || n.def.behavior === 'fish';
+      const oy = n.object.position.y;
+      list.push({ kind: 'npc', npc: n, x: n.pos.x, y: n.pos.y, z: n.pos.z, aimY: oy + (low ? (n.ground ? 0.7 : 1.0) : 1.38 * (n.char.scale || 1)), r: low ? 3.2 : 2.6, label: '交谈 · ' + n.def.name });
+    }
+    for (const c of this.cats) list.push({ kind: 'cat', cat: c, x: c.pos.x, y: c.pos.y, z: c.pos.z, aimY: c.pos.y + 0.22, r: 1.8, label: c.found ? '摸摸' + c.def.name : '摸摸这只猫' });
     return list;
+  }
+  aimPoint(it) {
+    const h = it.aimY ?? it.y + (it.kind === 'bell' ? 1.7 : it.kind === 'gaze' ? 2.2 : it.kind === 'pray' ? 1.3 : 1.0);
+    return new THREE.Vector3(it.x, h, it.z);
+  }
+  // 两点之间是否被墙、建筑或山坡挡住（低矮石墙、栏杆不算）
+  lineOfSight(a, b) {
+    const Cl = this.world.colliders, T = this.world.terrain;
+    const d = b.clone().sub(a);
+    const len = d.length();
+    if (len < 0.9) return true;
+    d.divideScalar(len);
+    for (let t = 0.35; t < len - 0.55; t += 0.25) {
+      const x = a.x + d.x * t, y = a.y + d.y * t, z = a.z + d.z * t;
+      if (Cl.blocked(x, y, z) || y < T.heightAt(x, z) - 0.15) return false;
+    }
+    return true;
   }
   findInteract() {
     const p = this.player;
-    let best = null, bestScore = Infinity;
-    const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
-    for (const it of this.interactables()) {
-      const dx = it.x - p.pos.x, dz = it.z - p.pos.z;
-      const d = Math.hypot(dx, dz);
-      if (d > it.r || Math.abs(it.y - p.pos.y) > 2.2) continue;
-      const facing = d > 0.3 ? (dx * fx + dz * fz) / d : 1;
-      if (facing < -0.35) continue;
-      const score = d - facing * 0.6;
-      if (score < bestScore) {
-        bestScore = score;
-        best = it;
+    const cands = [];
+    if (this.rig.firstPerson) {
+      // 第一人称：看向哪里就选哪里；越靠近准星、越近越优先
+      const E = this.rig.eye, F = this.rig.forward();
+      for (const it of this.interactables()) {
+        const dx = it.x - p.pos.x, dz = it.z - p.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d > it.r * 1.2 + 0.4 || Math.abs(it.y - p.pos.y) > 2.2) continue;
+        const P = this.aimPoint(it);
+        const v = P.clone().sub(E);
+        const l = v.length() || 1;
+        const cos = v.dot(F) / l;
+        if (cos < (d < 1.3 ? 0.5 : 0.8)) continue;
+        cands.push([(1 - cos) * 6 + d * 0.35, it, P]);
+      }
+    } else {
+      const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+      for (const it of this.interactables()) {
+        const dx = it.x - p.pos.x, dz = it.z - p.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d > it.r || Math.abs(it.y - p.pos.y) > 2.2) continue;
+        const facing = d > 0.3 ? (dx * fx + dz * fz) / d : 1;
+        if (facing < -0.35) continue;
+        cands.push([d - facing * 0.6, it, this.aimPoint(it)]);
       }
     }
-    return best;
+    if (!cands.length) return null;
+    cands.sort((a, b) => a[0] - b[0]);
+    const from = this.rig.firstPerson ? this.rig.eye : new THREE.Vector3(p.pos.x, p.pos.y + 1.3, p.pos.z);
+    for (const [, it, P] of cands.slice(0, 4)) if (this.lineOfSight(from, P)) return it;
+    return null;
   }
   doInteract(it) {
     const A = this.audio;
@@ -391,6 +451,7 @@ export class Game {
     const p = this.player;
     const face = () => {
       p.yaw = Math.atan2(it.x - p.pos.x, it.z - p.pos.z);
+      if (this.rig.firstPerson) this.rig.aimAt(this.aimPoint(it), it.kind === 'cat' ? 1.2 : 0.8);
     };
     switch (it.kind) {
       case 'stamp': {
@@ -453,6 +514,7 @@ export class Game {
       }
       case 'bench': {
         p.sitOn(it.bench);
+        if (this.rig.firstPerson) this.rig.faceCharYaw(it.bench.rot, -0.02);
         this.ui.subtitle('坐下来看看花吧。按住 T 让时光流逝，移动即可起身。', 4200);
         A.ui('wood');
         return;
@@ -618,15 +680,25 @@ export class Game {
         if (this.petTimer <= 0) this.player.mode = 'walk';
       }
       const bx = this.player.pos.x, bz = this.player.pos.z;
-      this.player.update(dt, input, this.rig.yaw, { locked: !playing });
+      const fp = this.rig.firstPerson && this.rig.mode === 'follow';
+      this.player.update(dt, input, this.rig.yaw, { locked: !playing, faceYaw: fp ? this.rig.yaw + Math.PI : undefined });
       this.state.distance += Math.hypot(this.player.pos.x - bx, this.player.pos.z - bz);
+      // 本帧刚触发的交互不再同时推进对话（否则第一句会被瞬间打完）
+      let consumed = false;
       if (playing && this.player.mode === 'walk') {
         const it = this.findInteract();
         this.ui.prompt(it ? it.label : null);
-        if (it && input.wasPressed('interact')) this.doInteract(it);
-      } else if (this.player.mode === 'sit') this.ui.prompt('起身', 'W');
-      else this.ui.prompt(null);
-      if (this.mode === 'dialog' && (input.wasPressed('interact') || input.wasPressed('jump'))) this.ui.advanceDialog();
+        this.ui.crosshairTarget(!!it);
+        if (it && input.wasPressed('interact')) {
+          this.doInteract(it);
+          consumed = true;
+        }
+      } else {
+        this.ui.crosshairTarget(false);
+        if (this.player.mode === 'sit') this.ui.prompt('起身', 'W');
+        else this.ui.prompt(null);
+      }
+      if (this.mode === 'dialog' && !consumed && (input.wasPressed('interact') || input.wasPressed('jump'))) this.ui.advanceDialog();
       if (this.pendingFinale && !this.ui.open && this.mode === 'play') {
         this.pendingFinale = false;
         this.state.finale = true;
@@ -648,6 +720,8 @@ export class Game {
       if (this.player.mode === 'sit' && this.rig.mode === 'follow') this.rig.distTarget = Math.max(this.rig.distTarget, 7.5);
       this.rig.update(dt, input, this.focusPoint(), this.player);
     }
+    // 第一人称时隐藏自己的身体（仍投下影子）
+    this.player.setGhost(this.rig.firstPerson && this.rig.mode === 'follow' && (this.mode === 'play' || this.mode === 'dialog'));
     // 实体
     for (const n of this.npcs) n.update(dt, this.player);
     for (const c of this.cats) c.update(dt, this.player);
@@ -682,6 +756,7 @@ export class Game {
     if (input.wasPressed('map')) this.onUIAction('map');
     if (input.wasPressed('book')) this.onUIAction('book');
     if (input.wasPressed('photo')) this.onUIAction('photo');
+    if (input.wasPressed('view') && this.mode === 'play') this.setView(this.rig.firstPerson ? 'third' : 'first');
     if (input.wasPressed('walkToggle') && this.mode === 'play') {
       this.player.walkToggle = !this.player.walkToggle;
       this.ui.subtitle(this.player.walkToggle ? '常跑：开' : '常跑：关', 1400);

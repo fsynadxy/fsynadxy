@@ -53,6 +53,7 @@ export class UI {
         </div>
         <div class="hud-region"><h2></h2><div class="rule"></div><p></p></div>
         <div class="hud-toasts"></div>
+        <div class="hud-cross"><i></i></div>
         <div class="hud-prompt off"><kbd>E</kbd><span></span></div>
         <div class="hud-hint"></div>
         <div class="hud-subtitle"></div>
@@ -164,6 +165,15 @@ export class UI {
   showHUD(on = true) {
     this.el.hud.classList.toggle('hidden', !on);
     this.el.touch.classList.toggle('hidden', !(on && this.game.input.isTouch));
+    if (on) this.setCrosshair(this.game.rig && this.game.rig.firstPerson);
+  }
+  // 第一人称准星：平时是一个很淡的小点，对准可交互的东西时变成一个圈
+  setCrosshair(on) {
+    $('.hud-cross', this.root).classList.toggle('hidden', !on);
+  }
+  crosshairTarget(on) {
+    const c = $('.hud-cross', this.root);
+    if (c.classList.contains('on') !== on) c.classList.toggle('on', on);
   }
   dimHUD(on) {
     this.el.hud.classList.toggle('dim', on);
@@ -228,7 +238,7 @@ export class UI {
     el.classList.toggle('off', !show);
     if (show && !el.innerHTML) {
       el.innerHTML = `<div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走 · <kbd>Shift</kbd> 奔跑 · <kbd>空格</kbd> 跳</div>
-        <div>按住鼠标拖动 转动视角 · 滚轮 远近</div>
+        <div>按住鼠标拖动 环顾四周 · <kbd>V</kbd> 切换第一/第三人称</div>
         <div><kbd>E</kbd> 交互 · <kbd>M</kbd> 地图 · <kbd>B</kbd> 御朱印帐 · <kbd>P</kbd> 拍照 · <kbd>T</kbd> 加速时间</div>`;
     }
   }
@@ -365,6 +375,8 @@ export class UI {
       body.innerHTML = `<div class="settings">
         <div><h4>画面</h4>
           <div class="row">画质 <span class="seg q">${Object.entries(QUALITY).map(([k, q]) => `<button data-q="${k}" class="${settings.quality === k ? 'on' : ''}">${q.name}</button>`).join('')}</span></div>
+          <div class="row">视角 <span class="seg v"><button data-v="first" class="${settings.view !== 'third' ? 'on' : ''}">第一人称</button><button data-v="third" class="${settings.view === 'third' ? 'on' : ''}">第三人称</button></span></div>
+          <div class="row">走路时镜头起伏 <input type="checkbox" class="s-bob" ${settings.headBob !== false ? 'checked' : ''}></div>
           <div class="row">显示操作提示 <input type="checkbox" class="s-hints" ${settings.showHints ? 'checked' : ''}></div>
           <div class="row muted" style="font-size:12px;color:var(--ink-3)">更改画质会重新载入页面（进度已自动保存）。</div>
         </div>
@@ -385,6 +397,16 @@ export class UI {
         this.game.saveNow();
         location.reload();
       });
+      body.querySelector('.v').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-v]');
+        if (!b) return;
+        body.querySelectorAll('.v button').forEach((x) => x.classList.toggle('on', x === b));
+        if (this.game.rig) this.game.setView(b.dataset.v, false);
+        else {
+          settings.view = b.dataset.v;
+          saveSettings();
+        }
+      });
       const bind = (cls, key, num = true) => body.querySelector(cls).addEventListener('input', (e) => {
         settings[key] = num ? parseFloat(e.target.value) : e.target.checked;
         saveSettings();
@@ -396,6 +418,7 @@ export class UI {
       bind('.s-inv', 'invertY', false);
       bind('.s-lock', 'pointerLock', false);
       bind('.s-hints', 'showHints', false);
+      bind('.s-bob', 'headBob', false);
       body.querySelector('.b-resume').addEventListener('click', () => this.closePanel());
       body.querySelector('.b-title').addEventListener('click', () => this.game.toTitle());
       body.querySelector('.b-reset').addEventListener('click', (e) => {
@@ -413,15 +436,15 @@ export class UI {
         <div><kbd>Shift</kbd> 按住奔跑 · <kbd>C</kbd> 切换常跑</div>
         <div><kbd>空格</kbd> 跳跃</div>
         <div><kbd>E</kbd> 交谈 / 盖章 / 抚摸 / 坐下</div>
-        <div>按住鼠标拖动 转动视角 · 滚轮 镜头远近</div>
+        <div>按住鼠标拖动 环顾四周 · <kbd>V</kbd> 切换第一/第三人称（第三人称时滚轮调远近）</div>
         <div><kbd>M</kbd> 地图 · <kbd>B</kbd> 御朱印帐 · <kbd>P</kbd> 拍照模式</div>
         <div><kbd>T</kbd> 按住让时间加速 · <kbd>Esc</kbd> 菜单</div>
       </div><div class="keys">
         <h4>触屏与手柄</h4>
         <div>左下摇杆 行走（推到底即奔跑）</div>
-        <div>右侧滑动 转动视角 · 双指 缩放</div>
+        <div>右侧滑动 环顾四周 · 设置里可切换第一/第三人称</div>
         <div>右下按钮 跳跃 / 交互</div>
-        <div>手柄：左摇杆移动 · 右摇杆视角 · A 跳 · X 交互 · Y 御朱印帐 · Back 地图 · RB 拍照</div>
+        <div>手柄：左摇杆移动 · 右摇杆视角（按下切换视角）· A 跳 · X 交互 · Y 御朱印帐 · Back 地图 · RB 拍照</div>
         <h4 style="margin-top:16px">玩法</h4>
         <div>在小镇八处名所收集御朱印，找到七只猫，</div>
         <div>和镇上的人聊聊天，或者只是坐下来看花。</div>

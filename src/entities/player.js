@@ -3,11 +3,15 @@ import { Character } from './character.js';
 import { clamp, damp, dampAngle, lerp } from '../core/math.js';
 import { WORLD, riverNearest, riverHalfWidth, isCanal } from '../world/layout.js';
 
-// 第三人称角色控制：加速度移动、碰撞、地面/桥面、浅水、陡坡与地图边界
+// 角色控制：加速度移动、碰撞、地面/桥面、浅水、陡坡与地图边界
+// 第一人称时身体朝向视线，模型换成「只投影子」的隐形材质（低头能看见自己的影子）
 export class Player {
   constructor(world, material) {
     this.world = world;
     this.char = new Character('traveler', material);
+    this.bodyMat = material;
+    this.ghostMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+    this.ghost = false;
     this.object = this.char.root;
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector3();
@@ -25,6 +29,11 @@ export class Player {
     this.airTime = 0;
     this.lastSafe = new THREE.Vector3();
     this.boundaryHit = 0;
+  }
+  setGhost(on) {
+    if (on === this.ghost) return;
+    this.ghost = on;
+    this.char.mesh.material = on ? this.ghostMat : this.bodyMat;
   }
   on(ev, fn) {
     (this.listeners[ev] = this.listeners[ev] || []).push(fn);
@@ -162,7 +171,8 @@ export class Player {
     // 朝向
     const sp = Math.hypot(this.vel.x, this.vel.z);
     this.speed = sp;
-    if (sp > 0.3 && !locked) this.yaw = dampAngle(this.yaw, Math.atan2(this.vel.x, this.vel.z), 10, dt);
+    if (opts.faceYaw !== undefined && this.mode === 'walk') this.yaw = dampAngle(this.yaw, opts.faceYaw, 14, dt);
+    else if (sp > 0.3 && !locked) this.yaw = dampAngle(this.yaw, Math.atan2(this.vel.x, this.vel.z), 10, dt);
     // 脚步
     if (this.grounded && sp > 0.6) {
       this.stepAcc += sp * dt;
