@@ -1,0 +1,305 @@
+/* 展台式查看器：全屏画布 + 左上铭牌 + 底部操作条
+   配色取自制服：天空纸色底、藏青墨、领结红作唯一强调色 */
+:root {
+  --paper: #eef2f9;
+  --paper-2: #fbf3f2;
+  --ink: #232844;
+  --ink-soft: #5d6486;
+  --line: rgba(35, 40, 68, 0.14);
+  --glass: rgba(255, 255, 255, 0.74);
+  --accent: #d2374a;
+  --accent-ink: #ffffff;
+  --font-display: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Noto Sans SC', 'PingFang SC', sans-serif;
+  --font-ui: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #12152a;
+    --paper-2: #1e1a2e;
+    --ink: #e8eaf6;
+    --ink-soft: #9ba1c2;
+    --line: rgba(232, 234, 246, 0.14);
+    --glass: rgba(24, 27, 50, 0.74);
+    --accent: #ff6b7b;
+    --accent-ink: #1b0f14;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --paper: #12152a;
+  --paper-2: #1e1a2e;
+  --ink: #e8eaf6;
+  --ink-soft: #9ba1c2;
+  --line: rgba(232, 234, 246, 0.14);
+  --glass: rgba(24, 27, 50, 0.74);
+  --accent: #ff6b7b;
+  --accent-ink: #1b0f14;
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+body {
+  background: radial-gradient(110% 80% at 50% 30%, var(--paper-2) 0%, var(--paper) 62%);
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+
+/* ---------- 铭牌 ---------- */
+.plate {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 18px);
+  left: max(18px, env(safe-area-inset-left, 0px));
+  display: grid;
+  gap: 6px;
+  max-width: min(340px, calc(100vw - 36px));
+  pointer-events: none;
+}
+.plate h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.plate .sub {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.count b {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.count span {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.meta {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+.parts {
+  pointer-events: auto;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.parts summary {
+  cursor: pointer;
+  width: fit-content;
+  list-style: none;
+  border-bottom: 1px dashed var(--line);
+}
+.parts summary::-webkit-details-marker {
+  display: none;
+}
+.parts summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.parts table {
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.parts td {
+  padding: 1px 12px 1px 0;
+}
+.parts td:last-child {
+  text-align: right;
+  padding-right: 0;
+  color: var(--ink);
+}
+.parts .bar {
+  display: inline-block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-soft);
+  opacity: 0.45;
+  vertical-align: middle;
+}
+
+/* ---------- 底部操作条 ---------- */
+.dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 14px;
+  width: max-content;
+  max-width: calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 10px 30px -18px rgba(20, 24, 50, 0.5);
+}
+.group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.group + .group {
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+.label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  margin-right: 6px;
+}
+.dock button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.dock button:hover {
+  background: var(--line);
+}
+.dock button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.dock button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.dock button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.hint {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right, 0px));
+  top: calc(env(safe-area-inset-top, 0px) + 20px);
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-align: right;
+  line-height: 1.6;
+  pointer-events: none;
+}
+
+/* ---------- 加载 ---------- */
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--paper);
+  transition: opacity 0.6s;
+}
+body.ready #loading {
+  opacity: 0;
+  pointer-events: none;
+}
+.ld-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+.ld-bar {
+  width: 200px;
+  height: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.ld-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+#progress-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 640px) {
+  .plate {
+    gap: 2px;
+  }
+  .plate h1 {
+    font-size: 20px;
+  }
+  .plate .sub,
+  .meta,
+  .parts {
+    display: none;
+  }
+  .count {
+    margin-top: 0;
+  }
+  .count b {
+    font-size: 16px;
+  }
+  .group + .group {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .hint {
+    display: none;
+  }
+  .dock {
+    gap: 4px 8px;
+    padding: 6px 8px;
+  }
+  .label {
+    display: none;
+  }
+  .dock button {
+    padding: 6px 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

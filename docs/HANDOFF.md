@@ -170,3 +170,13 @@ Claude-Session: https://claude.ai/code/session_01NcQToAoZWkBMawNc4Cis28
 （新会话若收到不同的署名要求，以新会话的为准。）
 
 - 已有提交：`7467cbb` 初版 → `4ce89eb` 打磨 → `bb91750` 修正 → 本交接文档
+
+## 11. 另一个子项目：程序化人物 `figure/`
+
+用户后来的需求：「纯粹用代码构建一个 3D 人物模型，最低三角面 200 万，黑发女高中生」，补充「主题偏向日系二次元」。实现见 README 的「黒髪の少女」一节。要点：
+
+- `figure/model/` 不依赖 three.js，浏览器与 Node 通用；`npm run figure:export` 会打印各部件面数并在不足 200 万时报错（当前约 380 万）。
+- 头部有缩放与歪头（`HEAD` in `head.js`），所有头部相关几何都经 `headToWorld/worldToHead`。
+- 头发生长 `grow()`：贴着表面时只去掉朝内的分量（滑动）；离开表面后水平分量衰减（自然垂落）；`pushOutTorso` 只沿法线补足距离（之前「投影回表面再外推」会让头发在肩顶上往脖子方向爬）。
+- 二次元着色在 `main.js` 的 `toonMaterial`：用主光漫反射反推受光与否（含投影），在固有色与每种材质的阴影色之间切换；皮肤阈值更低且不接收投影，避免脸上出现脏阴影。
+- 截图：先开 vite，再 `NODE_PATH=/opt/node-tools/node_modules node tools/figure-shot.cjs shots/x full face`（`PAGE=1` 连界面一起截，`DARK=1` 深色模式）。

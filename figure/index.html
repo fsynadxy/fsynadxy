@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>黒髪の少女</title>
+    <meta name="description" content="纯代码程序化生成的黑长直水手服少女 3D 模型，二次元赛璐璐渲染，三角面超过两百万。" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+SC:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="view" tabindex="0" aria-label="三维人物模型，拖动旋转，滚轮或双指缩放"></canvas>
+
+    <header class="plate">
+      <h1>黒髪の少女</h1>
+      <div class="sub">纯代码程序化生成 · 无任何贴图与模型素材</div>
+      <div class="count"><b id="tri">—</b><span>三角面</span></div>
+      <div class="meta" id="meta"></div>
+      <details class="parts" id="parts">
+        <summary>面数构成</summary>
+        <table id="parts-table"></table>
+      </details>
+    </header>
+
+    <div class="hint">拖动旋转 · 滚轮缩放 · 右键平移</div>
+
+    <nav class="dock" aria-label="查看控制">
+      <div class="group" role="group" aria-label="视角">
+        <span class="label">视角</span>
+        <button type="button" id="v-full" data-view="full" class="on">全身</button>
+        <button type="button" id="v-upper" data-view="upper">上身</button>
+        <button type="button" id="v-face" data-view="face">面部</button>
+        <button type="button" id="v-side" data-view="side">侧面</button>
+        <button type="button" id="v-back" data-view="back">背面</button>
+      </div>
+      <div class="group" role="group" aria-label="风格">
+        <span class="label">风格</span>
+        <button type="button" id="s-toon" data-style="toon" class="on">二次元</button>
+        <button type="button" id="s-pbr" data-style="pbr">写实</button>
+      </div>
+      <div class="group" role="group" aria-label="显示">
+        <button type="button" id="outline" class="on" aria-pressed="true">描边</button>
+        <button type="button" id="wire" aria-pressed="false">线框</button>
+        <button type="button" id="rotate" aria-pressed="false">旋转</button>
+        <button type="button" id="export">导出 GLB</button>
+      </div>
+    </nav>
+
+    <div id="loading">
+      <div class="ld-title">黒髪の少女</div>
+      <div class="ld-bar"><i id="progress"></i></div>
+      <div id="progress-label">准备中…</div>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
