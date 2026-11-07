@@ -85,6 +85,19 @@ export function buildRiverbanks(chunks, colliders, terrain, gaps = []) {
   const P = river.pts, A = river.acc;
   const stoneCol = '#9e978a';
   const capCol = '#b8b1a3';
+  // 护岸端头：一段垂直于河道的石墙把压顶石与迎水面收住，栏杆末端立一根端柱
+  const endCap = (c, out) => {
+    const cx = (c.face[0] + c.back[0]) / 2 + c.tx * out * 0.2, cz = (c.face[1] + c.back[1]) / 2 + c.tz * out * 0.2;
+    const bld = chunks.at(cx, cz);
+    bld.place(cx, 0, cz, Math.atan2(-c.nz, c.nx));
+    bld.pattern(PAT.STONE, 0);
+    bld.box(0, c.bot, 0, 2.8, c.top - c.bot + 0.02, 0.42, stoneCol, { topColor: capCol });
+    bld.place(c.rail[0] + c.tx * out * 0.05, 0, c.rail[1] + c.tz * out * 0.05, Math.atan2(-c.nz, c.nx));
+    bld.pattern(PAT.PLANK, 0);
+    bld.box(0, c.top, 0, 0.17, 1.08, 0.17, '#4e3424');
+    bld.box(0, c.top + 1.08, 0, 0.21, 0.05, 0.21, '#3e2a1d');
+    bld.identity();
+  };
   // 每侧收集护岸点
   for (const side of [1, -1]) {
     let prev = null;
@@ -94,6 +107,7 @@ export function buildRiverbanks(chunks, colliders, terrain, gaps = []) {
     for (let i = 0; i < P.length; i++) {
       const s = A[i];
       if (!isCanal(s)) {
+        if (prev) endCap(prev, 1);
         prev = null;
         continue;
       }
@@ -113,7 +127,9 @@ export function buildRiverbanks(chunks, colliders, terrain, gaps = []) {
         top: bank + 0.14,
         bot: wl - 1.3,
         s,
+        tx, tz, nx, nz,
       };
+      if (!prev) endCap(cur, -1);
       if (prev) {
         const bld = chunks.at(cur.face[0], cur.face[1]);
         bld.pattern(PAT.STONE, 0);

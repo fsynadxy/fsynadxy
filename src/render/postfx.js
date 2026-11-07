@@ -84,7 +84,7 @@ export class PostFX {
     this.bloom = null;
     if (quality.bloom) {
       const scale = quality.bloomScale || 0.5;
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x * scale, size.y * scale), 0.35, 0.55, 0.82);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x * scale, size.y * scale), 0.35, 0.7, 0.84);
       this.composer.addPass(this.bloom);
     }
     this.output = new OutputPass();

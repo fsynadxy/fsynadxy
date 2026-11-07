@@ -19,6 +19,10 @@ export const U = {
   uHemiGround: { value: new THREE.Color('#8a8a5a') },
   uLanternColor: { value: new THREE.Color('#ffb36b') },
   uFinale: { value: 0 }, // 集齐御朱印后千年桜点灯
+  // 云（由 DayNight 每帧更新，天空与水面倒影共用）
+  uCloudLit: { value: new THREE.Color(1, 1, 1) },
+  uCloudShade: { value: new THREE.Color(0.7, 0.75, 0.85) },
+  uCloudCover: { value: 0.55 },
   // 太阳阴影贴图（第一次渲染后由 Game 填入），供草、花瓣、水面等自写着色器采样
   uShadowMap: { value: null },
   uShadowMatrix: { value: new THREE.Matrix4() },

@@ -136,7 +136,9 @@ export class FallingPetals {
           vis *= 1.0 - smoothstep(uBox * 0.34, uBox * 0.5, length(rel.xz));
           vec3 axis = normalize(aParams.yzw - 0.5 + vec3(0.001));
           mat3 R = rotAxis(axis, t * (1.4 + aParams.w * 2.6) + aSeed.w * 10.0);
-          float size = (0.085 + 0.045 * aParams.z) * vis;
+          // 第一人称下花瓣会贴着眼睛飞过：按真实大小（3.5～6 cm），近处淡出，远处略放大以便看得见
+          float camD = length(wp - cameraPosition);
+          float size = (0.035 + 0.025 * aParams.z) * vis * mix(1.0, 1.9, smoothstep(3.0, 22.0, camD)) * smoothstep(0.5, 1.2, camD);
           vec3 local = R * (position * size);
           vN = R * vec3(0.0, 0.0, 1.0);
           vec3 world = wp + local;

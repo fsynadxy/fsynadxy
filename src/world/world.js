@@ -222,7 +222,7 @@ export class World {
     }
     // 2. 桜川两岸的樱花并木（城中段 + 下游）
     for (const side of [1, -1]) {
-      const pts = offsetPolyline(promenades.center, side * 13.9);
+      const pts = promenades.line(side, 2.9);
       const dense = resample(pts, 1);
       let acc = 3;
       for (let i = 0; i < dense.length; i++) {
@@ -473,7 +473,7 @@ export class World {
     for (const l of lamps) ctx.lights.push([l[0], l[1], l[2], 1.2]);
     // 河岸长椅（面向河）
     for (const side of [1, -1]) {
-      const pts = offsetPolyline(promenades.center, side * 12.9);
+      const pts = promenades.line(side, 1.9);
       for (let i = 10; i < pts.length - 4; i += 22) {
         const [x, z] = pts[i];
         if (ctx.noTree.some(([nx, nz, r]) => Math.hypot(x - nx, z - nz) < r)) continue;
@@ -576,8 +576,10 @@ export class World {
         const b = ctx.chunks.at(x, z);
         b.place(x, y, z, 0);
         b.pattern(PAT.BAMBOO, 0);
-        b.cylinder(0, 0, 0, 0.08, 0.1, 8.2, 6, '#9cb26a');
-        this.colliders.addCircle(x, z, 0.15, y - 1, y + 8);
+        b.cylinder(0, 0, 0, 0.11, 0.14, 8.6, 8, '#9cb26a');
+        b.pattern(PAT.NONE, 0);
+        b.sphere(0, 8.75, 0, 0.17, 10, 8, '#d6ad48');
+        this.colliders.addCircle(x, z, 0.2, y - 1, y + 8);
       }
     }
     // 光池位置
@@ -608,49 +610,55 @@ export class World {
   buildKoinobori() {
     const k = this.koinobori;
     if (k) {
-      const pos = [], col = [], nor = [], idx = [], along = [];
+      const pos = [], col = [], nor = [], idx = [], along = [], koi = [];
       const colors = ['#2a2a30', '#c83a32', '#3d6fb0', '#3f8a58', '#e48aa6', '#e8a23a', '#7b4aa0'];
       const N = 9;
+      const NR = 24;
       const ropePts = [];
-      for (let i = 0; i <= 16; i++) {
-        const t = i / 16;
+      for (let i = 0; i <= NR; i++) {
+        const t = i / NR;
         ropePts.push([lerp(k.ax, k.bx, t), lerp(k.ay, k.by, t) - Math.sin(t * Math.PI) * 1.4, lerp(k.az, k.bz, t)]);
       }
-      // 绳
+      // 绳：深色、够粗，远处也看得见
       const rb = this.ctx.chunks.at(k.ax, k.az);
       rb.identity();
-      rb.tube(ropePts, 0.02, 3, '#d9cfb8');
+      rb.pattern(PAT.NONE, 0);
+      rb.tube(ropePts, 0.032, 4, '#4f4436');
       const dirx = k.bx - k.ax, dirz = k.bz - k.az;
       const L = Math.hypot(dirx, dirz);
       const px = -dirz / L, pz = dirx / L; // 垂直于绳（沿河方向）
       for (let c = 0; c < N; c++) {
         const t = (c + 1) / (N + 1);
-        const ri = t * 16;
-        const a = ropePts[Math.floor(ri)], b = ropePts[Math.min(16, Math.floor(ri) + 1)];
+        const ri = t * NR;
+        const a = ropePts[Math.floor(ri)], b = ropePts[Math.min(NR, Math.floor(ri) + 1)];
         const f = ri - Math.floor(ri);
-        const hx = lerp(a[0], b[0], f), hy = lerp(a[1], b[1], f) - 0.25, hz = lerp(a[2], b[2], f);
+        const rx = lerp(a[0], b[0], f), ry = lerp(a[1], b[1], f), rz = lerp(a[2], b[2], f);
+        const hx = rx, hy = ry - 0.42, hz = rz;
+        // 吊绳
+        rb.tube([[rx, ry, rz], [hx, hy + 0.3, hz]], 0.012, 3, '#4f4436');
         const len = 2.4 + (c % 3) * 0.4;
+        const R0 = 0.34 * (len / 2.6);
         const base = new THREE.Color(colors[c % colors.length]);
         const belly = base.clone().lerp(new THREE.Color('#ffffff'), 0.55);
-        const seg = 8, ring = 8;
+        const seg = 18, ring = 12;
         const start = pos.length / 3;
         for (let i = 0; i <= seg; i++) {
           const u = i / seg;
-          const r = 0.34 * (u < 0.15 ? 0.85 + u : 1 - u * 0.55) * (len / 2.6);
+          // 口圈略收、身体渐细，尾部压扁成鳍
+          const r = R0 * (u < 0.05 ? 0.9 + u * 2 : 1 - Math.pow(u, 1.5) * 0.5);
+          const flat = 1 - smoothstep(0.76, 1.0, u) * 0.82;
+          const wide = 1 + smoothstep(0.76, 1.0, u) * 0.25;
           for (let j = 0; j <= ring; j++) {
             const th = (j / ring) * Math.PI * 2;
             const cx = hx + px * u * len, cz = hz + pz * u * len;
-            const y = hy + Math.sin(th) * r;
-            const side = Math.cos(th) * r;
+            const y = hy + Math.sin(th) * r * flat;
+            const side = Math.cos(th) * r * wide;
             pos.push(cx + (dirx / L) * side, y, cz + (dirz / L) * side);
             nor.push((dirx / L) * Math.cos(th), Math.sin(th), (dirz / L) * Math.cos(th));
-            let cc = Math.sin(th) < -0.2 ? belly : base;
-            // 鳞纹与眼睛
-            if (Math.sin(u * 40 + th * 3) > 0.7) cc = cc.clone().multiplyScalar(0.8);
-            if (u < 0.12 && Math.abs(Math.cos(th)) > 0.85 && Math.sin(th) > 0.1) cc = new THREE.Color(u < 0.07 ? '#ffffff' : '#111111');
-            if (i === 0) cc = new THREE.Color('#f2e6c8');
+            const cc = Math.sin(th) < -0.25 ? belly : base;
             col.push(cc.r, cc.g, cc.b);
             along.push(u, c * 1.7);
+            koi.push(u, th, len, R0);
           }
         }
         for (let i = 0; i < seg; i++)
@@ -664,19 +672,42 @@ export class World {
       g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
       g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       g.setAttribute('aAlong', new THREE.Float32BufferAttribute(along, 2));
+      g.setAttribute('aKoi', new THREE.Float32BufferAttribute(koi, 4));
       g.setIndex(idx);
       g.computeBoundingSphere();
-      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, side: THREE.DoubleSide });
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, side: THREE.DoubleSide });
       patchMaterial(mat, {
         key: 'koinobori',
         uniforms: ['uTime', 'uWind', 'uGust'],
-        vertexHead: 'attribute vec2 aAlong; uniform float uTime; uniform vec2 uWind; uniform float uGust;\n',
+        vertexHead: 'attribute vec2 aAlong; attribute vec4 aKoi; varying vec4 vKoi; uniform float uTime; uniform vec2 uWind; uniform float uGust;\n',
         vertexBegin: /* glsl */ `
           {
+            vKoi = aKoi;
             float u = aAlong.x;
             float w = sin(uTime * 3.2 - u * 7.0 + aAlong.y) * 0.32 * u;
             transformed.y += w + (1.0 - (0.4 + uGust * 0.6)) * u * u * -1.1;
             transformed.xz += uWind * sin(uTime * 2.1 + aAlong.y + u * 3.0) * 0.25 * u;
+          }
+        `,
+        fragmentHead: 'varying vec4 vKoi;\n',
+        fragmentColor: /* glsl */ `
+          {
+            float u = vKoi.x, th = vKoi.y, len = vKoi.z, r0 = vKoi.w;
+            // 鳞：错位排列的弧线
+            vec2 sc = vec2(u * len * 3.4, th / 6.2832 * 11.0);
+            sc.y += mod(floor(sc.x), 2.0) * 0.5;
+            vec2 sf = fract(sc) - vec2(0.0, 0.5);
+            float arc = smoothstep(0.09, 0.0, abs(length(sf) - 0.55)) * step(0.14, u) * step(u, 0.78);
+            diffuseColor.rgb *= 1.0 - 0.3 * arc;
+            // 尾鳍条纹
+            diffuseColor.rgb *= 1.0 - 0.2 * step(0.78, u) * (0.5 + 0.5 * sin(th * 9.0 + u * 34.0));
+            // 两侧的眼睛（白眼圈 + 黑瞳）
+            float dth = min(min(abs(th), abs(th - 3.14159)), abs(th - 6.28318));
+            float er = length(vec2((u - 0.085) * len, dth * r0));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.94, 0.9), smoothstep(0.082, 0.07, er));
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.03), smoothstep(0.045, 0.035, er));
+            // 口圈
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.87, 0.72), step(u, 0.028));
           }
         `,
       });
@@ -721,7 +752,7 @@ export class World {
     const data = new Float32Array(n * 4);
     lights.forEach((l, i) => {
       const gy = T.heightAt(l[0], l[2]);
-      data.set([l[0], Math.min(gy, l[1]) + 0.08, l[2], (l[3] || 1) * clamp((l[1] - gy) * 1.6 + 2.2, 2.5, 6.5)], i * 4);
+      data.set([l[0], Math.min(gy, l[1]) + 0.08, l[2], (l[3] || 1) * clamp((l[1] - gy) * 2.0 + 2.8, 3.2, 8.0)], i * 4);
     });
     g.setAttribute('aLight', new THREE.InstancedBufferAttribute(data, 4));
     g.instanceCount = n;
@@ -733,7 +764,15 @@ export class World {
       `,
       fragmentShader: /* glsl */ `
         uniform float uNight; uniform vec3 uColor; varying vec2 vP;
-        void main(){ float d = length(vP); float a = pow(max(1.0 - d, 0.0), 2.2) * uNight * 0.55; gl_FragColor = vec4(uColor * a, 1.0); }
+        // 灯下的光池：高斯衰减（边缘平滑地归零）+ 轻微抖动，避免一圈圈的色带
+        float h12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+        void main(){
+          float d2 = dot(vP, vP);
+          float a = max((exp(-d2 * 3.2) - 0.0408) / 0.9592, 0.0);
+          a *= uNight * 0.3;
+          a += (h12(gl_FragCoord.xy) - 0.5) * (1.5 / 255.0) * step(0.001, a);
+          gl_FragColor = vec4(uColor * vec3(1.0, 0.93, 0.85) * max(a, 0.0), 1.0);
+        }
       `,
       transparent: true,
       blending: THREE.AdditiveBlending,

@@ -182,6 +182,9 @@ export class DayNight {
     su.uCloudShade.value.copy(sky).multiplyScalar(0.62).add(fog.clone().multiplyScalar(0.22 * (1 - wN - wB)));
     mixLayers(su.uCloudShade.value, 'cloudShade');
     su.uCloudCover.value = this.cloud;
+    U.uCloudLit.value.copy(su.uCloudLit.value);
+    U.uCloudShade.value.copy(su.uCloudShade.value);
+    U.uCloudCover.value = this.cloud;
     su.uSunVisible.value = smoothstep(-4, -0.5, elev);
     su.uStarVis.value = smoothstep(-6, -13, elev);
     su.uMoonVisible.value = smoothstep(-1, -8, elev) * smoothstep(-0.05, 0.08, md.y);
@@ -208,7 +211,7 @@ export class DayNight {
     this.hemi.color.copy(hemiSky);
     this.hemi.groundColor.copy(hemiGround);
     this.hemi.intensity = 1.85;
-    this.state.bloom = 0.28 + 0.67 * U.uNight.value;
+    this.state.bloom = 0.28 + 0.42 * U.uNight.value;
     this.state.exposure = 1.0 + 0.1 * wN;
     this.state.G = G;
   }

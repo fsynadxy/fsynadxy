@@ -785,9 +785,12 @@ export function buildStation(ctx, terrain) {
     // 地面到站台的地坪
     b.pattern(PAT.STONE, 0);
     b.box(0, ground - 0.5, 0, W + 0.6, platY - ground + 0.48, D + 0.6, '#a59f93');
+    // 两侧墙：有厚度、内外都看得见（坡道穿过站房，人会走进来）；墙脚木板带略宽于墙，避免与墙面重叠闪烁
     b.pattern(PAT.PLANK, 0);
-    b.box(0, platY, 0, W, 3.0, D, '#efe6d2', { faces: 'pxnx', ao: 0.05 });
-    b.box(0, platY, 0, W, 1.0, D + 0.02, '#6b4a33', { faces: 'pxnx' });
+    for (const sx of [-1, 1]) {
+      b.box(sx * (W / 2 - 0.08), platY, 0, 0.16, 3.0, D - 0.02, '#efe6d2', { ao: 0.05 });
+      b.box(sx * (W / 2 - 0.08), platY, 0, 0.2, 1.0, D + 0.02, '#6b4a33');
+    }
     // 前后墙留出门洞
     for (const sz of [-1, 1]) {
       for (const sx of [-1, 1]) b.box(sx * (W / 4 + 0.9), platY, (sz * D) / 2, W / 2 - 1.8, 3.0, 0.16, '#efe6d2');

@@ -301,7 +301,8 @@ export function catSpots(world) {
   }
   if (S.pagoda) {
     const rot = S.templeTop ? S.templeTop[3] : 0;
-    const x = S.pagoda[0] + Math.sin(rot) * 5.4 + Math.cos(rot) * 2.4, z = S.pagoda[2] + Math.cos(rot) * 5.4 - Math.sin(rot) * 2.4;
+    // 五重塔石台半宽 4.8 m：猫睡在台面靠外的位置，而不是悬在边缘外
+    const x = S.pagoda[0] + Math.sin(rot) * 4.15 + Math.cos(rot) * 2.4, z = S.pagoda[2] + Math.cos(rot) * 4.15 - Math.sin(rot) * 2.4;
     out.hachi = { x, z, y: S.pagoda[1] + 0.7, rot };
   }
   return out;

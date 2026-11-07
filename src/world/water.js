@@ -21,8 +21,11 @@ function waterMaterial(mode) {
       uFogBase: U.uFogBase,
       uFogSun: U.uSunDir,
       uMode: { value: mode },
-      uDeep: { value: new THREE.Color(mode === 2 ? '#4a5f55' : '#28504d') },
-      uShallow: { value: new THREE.Color(mode === 2 ? '#7d7f5e' : '#587a6c') },
+      uCloudLit: U.uCloudLit,
+      uCloudShade: U.uCloudShade,
+      uCloudCover: U.uCloudCover,
+      uDeep: { value: new THREE.Color(mode === 2 ? '#262b22' : '#28504d') },
+      uShallow: { value: new THREE.Color(mode === 2 ? '#3d3c2c' : '#587a6c') },
       ...shadowUniforms(),
     },
     vertexShader: /* glsl */ `
@@ -42,7 +45,8 @@ function waterMaterial(mode) {
       ${GLSL_COMMON}
       ${SHADOW_GLSL}
       uniform float uTime, uDay, uNight, uMode, uFogDensity, uFogBase;
-      uniform vec3 uSunDir, uSunColor, uZenith, uHorizon, uLantern, uDeep, uShallow, uFogColor, uFogSunColor, uFogSun;
+      uniform vec3 uSunDir, uSunColor, uZenith, uHorizon, uLantern, uDeep, uShallow, uFogColor, uFogSunColor, uFogSun, uCloudLit, uCloudShade;
+      uniform float uCloudCover;
       varying vec2 vFlow; varying vec3 vWorld; varying float vDepth;
       // petal: one per cell, notched teardrop
       float petalCell(vec2 p, float dens){
@@ -88,20 +92,32 @@ function waterMaterial(mode) {
           float edge = min(vFlow.x, 1.0 - vFlow.x);
           sky *= mix(0.42, 1.0, smoothstep(0.02, 0.32, edge) * 0.7 + smoothstep(0.0, 0.5, R.y) * 0.3);
         }
+        // 湖与水田像镜子：倒影里有流云（与天空同一套噪声）和四周的群山
+        if (uMode > 0.5) {
+          vec2 cuv = R.xz / (max(R.y, 0.0) + 0.16);
+          cuv = cuv * 0.85 + vec2(uTime * 0.0035, uTime * 0.0012);
+          float cn = fbmN(cuv * 1.15) * 0.72 + fbmN(cuv * 2.9 + 5.0) * 0.28;
+          float cov = smoothstep(uCloudCover, uCloudCover + 0.3, cn * 1.1) * smoothstep(0.0, 0.2, R.y) * 0.85;
+          sky = mix(sky, mix(uCloudShade, uCloudLit, 0.55), cov);
+          float az = atan(R.x, R.z);
+          float ridge = 0.05 + 0.07 * vnoise(vec2(az * 2.3, 1.3)) + 0.035 * vnoise(vec2(az * 7.0, 4.1));
+          vec3 mtn = mix(vec3(0.045, 0.07, 0.045) * (uSunColor * uDay * 0.9 + uZenith * 1.2 + 0.03), uHorizon, 0.38);
+          sky = mix(mtn, sky, smoothstep(ridge - 0.012, ridge + 0.012, R.y));
+        }
         float shade = sunShadow(vWorld + vec3(0.0, 0.05, 0.0), 0.0006);
         float sunSpec = (pow(max(dot(R, uSunDir), 0.0), 220.0) * 5.0 + pow(max(dot(R, uSunDir), 0.0), 18.0) * 0.25) * shade;
         vec3 body = mix(uShallow, uDeep, smoothstep(0.1, 2.5, vDepth));
         body *= (0.35 + 0.65 * uDay) * vec3(1.0) + uNight * vec3(0.02, 0.03, 0.06);
         vec3 col = mix(body, sky, fres * (uMode > 1.5 ? 0.95 : 0.8));
         col += uSunColor * sunSpec * uDay;
-        // night: lantern shimmer
-        col += uLantern * uNight * 0.18 * smoothstep(0.55, 0.95, vnoise(p * 1.7 + uTime * 0.3)) * (uMode < 0.5 ? 1.0 : 0.3);
+        // night: lantern shimmer（只在城中的河上；水田和湖边没有灯笼）
+        if (uMode < 0.5) col += uLantern * uNight * 0.18 * smoothstep(0.55, 0.95, vnoise(p * 1.7 + uTime * 0.3));
         // edge foam / shore
         if (uMode < 0.5) {
           float edge = min(vFlow.x, 1.0 - vFlow.x);
           col = mix(col, col * 1.15 + 0.03, smoothstep(0.08, 0.0, edge) * 0.5);
         }
-        float alpha = mix(0.72, 0.97, fres) * smoothstep(0.0, 0.25, vDepth + 0.05);
+        float alpha = uMode > 1.5 ? mix(0.9, 0.99, fres) : mix(0.72, 0.97, fres) * smoothstep(0.0, 0.25, vDepth + 0.05);
         // hanaikada: drifting rafts of petals
         float petals = 0.0;
         if (uMode < 1.5) {

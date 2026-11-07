@@ -149,15 +149,33 @@ road('竹林の小径', [[-196, -186], [-188, -218], [-160, -246], [-120, -252],
 road('公園の道', [[30, -28], [58, -40], [86, -30]], 3, 'gravel');
 
 // 河岸步道（城中段两岸）
+// 步道离河心的距离：运河段 11 m（紧挨压顶石）；出了运河，随河面变宽逐渐外移，和水之间留一段草坡
+export function promenadeOffset(s) {
+  if (isCanal(s)) return 11;
+  const k = s > river.canalEnd ? smoothstep(river.canalEnd, river.canalEnd + 28, s) : smoothstep(river.canalStart, river.canalStart - 20, s);
+  return 11 + (Math.max(0, riverHalfWidth(s) + 4.6 - 11) + 0.8) * k;
+}
 export const promenades = (() => {
   const i0 = river.acc.findIndex((a) => a >= river.canalStart);
   let i1 = river.acc.findIndex((a) => a >= river.canalEnd + 150);
   if (i1 < 0) i1 = river.pts.length - 1;
-  const center = river.pts.slice(Math.max(0, i0 - 6), i1);
+  const j0 = Math.max(0, i0 - 6);
+  const center = river.pts.slice(j0, i1);
+  const offs = center.map((p, i) => promenadeOffset(river.acc[j0 + i]));
+  // side：+1 东岸（左法线方向），-1 西岸；delta：在步道中线基础上再往外的距离
+  const line = (side, delta = 0) => center.map((p, i) => {
+    const a = center[Math.max(0, i - 1)], c = center[Math.min(center.length - 1, i + 1)];
+    let tx = c[0] - a[0], tz = c[1] - a[1];
+    const l = Math.hypot(tx, tz) || 1;
+    tx /= l;
+    tz /= l;
+    const o = side * (offs[i] + delta);
+    return [p[0] + tz * o, p[1] - tx * o];
+  });
   // 河向南流：左侧（正偏移）为东岸
-  const east = offsetPolyline(center, 11).filter((p, i) => i % 2 === 0);
-  const west = offsetPolyline(center, -11).filter((p, i) => i % 2 === 0);
-  return { center, west, east };
+  const east = line(1).filter((p, i) => i % 2 === 0);
+  const west = line(-1).filter((p, i) => i % 2 === 0);
+  return { center, west, east, line };
 })();
 road('西岸步道', promenades.west, 3.4, 'promenade', { promenade: true, raw: true });
 road('東岸步道', promenades.east, 3.4, 'promenade', { promenade: true, raw: true });
