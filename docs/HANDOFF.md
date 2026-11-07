@@ -180,3 +180,20 @@ Claude-Session: https://claude.ai/code/session_01NcQToAoZWkBMawNc4Cis28
 - 头发生长 `grow()`：贴着表面时只去掉朝内的分量（滑动）；离开表面后水平分量衰减（自然垂落）；`pushOutTorso` 只沿法线补足距离（之前「投影回表面再外推」会让头发在肩顶上往脖子方向爬）。
 - 二次元着色在 `main.js` 的 `toonMaterial`：用主光漫反射反推受光与否（含投影），在固有色与每种材质的阴影色之间切换；皮肤阈值更低且不接收投影，避免脸上出现脏阴影。
 - 截图：先开 vite，再 `NODE_PATH=/opt/node-tools/node_modules node tools/figure-shot.cjs shots/x full face`（`PAGE=1` 连界面一起截，`DARK=1` 深色模式）。
+
+### 11.1 人物子项目的当前状态与待办（最新）
+
+- 已推送分支：`claude/optimistic-thompson-k7irvn`（本子项目在这个分支上开发；未开 PR）
+- 在线查看页（Artifact，私有）：https://claude.ai/artifact/DDNhQ15YBPdoDBz36qcG93 （Version 1，无导出按钮）
+  - 更新方法：`npm run figure:build`，把 `dist-figure/assets/index-*.js/.css` 复制为 `assets/figure.js`、`assets/figure.css`，
+    页面片段取 `figure/index.html` 的 body（去掉导出按钮，脚本改为 `assets/figure.js`）并加上 `<title>` 与字体、CSS 链接；
+    新会话需先 `action: "read"` 该 URL，再带 `url` 发布，`icon` 不再传。
+- 当前面数 3,804,322（发束 131 万、制服 98 万、皮肤 57 万、细发丝 43 万……），导出 GLB 约 110 MB。
+
+用户最新反馈（待做）：
+1. 「太胖了 / 身子太宽」：收窄肩宽（`torso.js` KEYS 与 `body.js` ARM）、胸腰与上衣松量、裙摆张开度（`clothes.js` SKIRT）、手臂与袖子粗细；
+   改躯干后要同步检查：裙子在上衣下摆以上必须在上衣内（留 4–8mm），手不能插进裙子，衣领轮廓点（OUTER/INNER）贴合。
+2. 面数要求改为 **2000 万**：计划把模型做成可按档位生成（例如 `buildFigure({ detail })`），
+   满档 ≥ 2000 万（主要加在头发：更多更细的发丝；其次脸、衣服细分），导出脚本检查 ≥ 2000 万；
+   查看器默认流畅档，另设「2000 万」档按需切换（满档浏览器生成约十几秒、内存约 1 GB、GLB 约 600 MB，手机可能带不动）。
+3. 用户正在用提示词生成参考图（三视图、面部特写、背面），收到后按图调整比例、发型、裙长等。
