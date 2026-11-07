@@ -92,7 +92,7 @@ export class Game {
     this.hasSave = !!(save && save.pos);
     if (save) Object.assign(this.state, this.freshState(), save);
     const startHour = this.params.has('t') ? parseFloat(this.params.get('t')) : this.hasSave ? this.state.hours : 16.6;
-    this.daynight = new DayNight({ scene, sky: this.world.sky, sun, hemi, startHour });
+    this.daynight = new DayNight({ scene, sky: this.world.sky, sun, hemi, startHour, renderer });
     this.daynight.day = this.state.day || 1;
     this.daynight.onHour((h) => this.onHour(h));
     this.daynight.apply();
@@ -267,6 +267,7 @@ export class Game {
     const panel = this.ui.el.photo;
     const was = panel.classList.contains('hidden');
     panel.classList.add('hidden');
+    this.daynight.prepare();
     this.post.render(0, this.time);
     let url = null;
     try {
@@ -744,7 +745,10 @@ export class Game {
     this.renderer.toneMappingExposure = st.exposure;
     if (this.mode === 'play' || this.mode === 'dialog') this.updateHUD(dt);
     this.updateAudio(dt);
-    if (!window.__noRender) this.post.render(dt, this.time);
+    if (!window.__noRender) {
+      this.daynight.prepare();
+      this.post.render(dt, this.time);
+    }
     input.endFrame();
   }
   handleKeys() {

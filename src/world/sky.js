@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { U, GLSL_COMMON } from '../render/shaders.js';
 import { noise2, fbm2, RNG } from '../core/math.js';
+import { GLSL_SKY_LUT_SAMPLE } from '../render/atmosphere.js';
 
-// 程序化天空穹顶：渐变、太阳光晕、流云、星空与朦胧的春月（朧月）
+// 程序化天空穹顶：大气散射查找表（白天与晨昏）+ 蓝调/夜色层、流云、星空与朦胧的春月（朧月）
 export function createSky() {
   const uniforms = {
     uSunDir: U.uSunDir,
@@ -19,6 +20,11 @@ export function createSky() {
     uNight: U.uNight,
     uSunVisible: { value: 1 },
     uMoonVisible: { value: 0 },
+    uSkyLUT: { value: null },
+    uSkyGain: { value: 0 },
+    uNightZenith: { value: new THREE.Color(0, 0, 0) },
+    uNightHorizon: { value: new THREE.Color(0, 0, 0) },
+    uStarVis: { value: 0 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -32,19 +38,23 @@ export function createSky() {
     `,
     fragmentShader: /* glsl */ `
       ${GLSL_COMMON}
-      uniform vec3 uSunDir, uMoonDir, uZenith, uHorizon, uGround, uSunColor, uSunGlow, uCloudLit, uCloudShade;
-      uniform float uCloudCover, uTime, uNight, uSunVisible, uMoonVisible;
+      ${GLSL_SKY_LUT_SAMPLE}
+      uniform vec3 uSunDir, uMoonDir, uZenith, uHorizon, uGround, uSunColor, uSunGlow, uCloudLit, uCloudShade, uNightZenith, uNightHorizon;
+      uniform float uCloudCover, uTime, uNight, uSunVisible, uMoonVisible, uSkyGain, uStarVis;
+      uniform sampler2D uSkyLUT;
       varying vec3 vDir;
       float cfbm(vec2 p){ float s = 0.0, a = 0.55; for (int i = 0; i < 5; i++){ s += a * vnoise(p); p = p * 2.07 + vec2(13.1, 7.7); a *= 0.5; } return s; }
       void main(){
         vec3 d = normalize(vDir);
         float y = d.y;
         float hz = clamp(y, 0.0, 1.0);
-        vec3 col = mix(uHorizon, uZenith, pow(hz, 0.55));
-        col = mix(col, uHorizon * 1.04, exp(-hz * 16.0) * 0.5);
+        // 物理天空（查找表）+ 蓝调与夜色
+        vec3 col = mix(uNightHorizon, uNightZenith, pow(hz, 0.55));
+        col = mix(col, uNightHorizon * 1.04, exp(-hz * 16.0) * 0.5);
+        if (uSkyGain > 0.0) col += texture2D(uSkyLUT, skyLutUV(vec3(d.x, max(d.y, 0.0), d.z))).rgb * uSkyGain;
         float sd = dot(d, uSunDir);
         float sdp = max(sd, 0.0);
-        col += uSunGlow * (pow(sdp, 5.0) * 0.32 + pow(sdp, 42.0) * 0.55) * uSunVisible * (0.6 + 0.4 * exp(-hz * 5.0));
+        col += uSunGlow * (pow(sdp, 8.0) * 0.25 + pow(sdp, 60.0) * 0.6) * uSunVisible * (0.6 + 0.4 * exp(-hz * 5.0));
         // clouds
         float cov = 0.0;
         if (y > -0.05) {
@@ -63,16 +73,16 @@ export function createSky() {
         }
         // sun disc
         float disc = smoothstep(0.99955, 0.99978, sd);
-        col = mix(col, uSunColor * 7.0 + vec3(1.5), disc * uSunVisible * (1.0 - cov * 0.85));
+        col = mix(col, uSunColor * 9.0 + vec3(0.4) * uSunColor.b, disc * uSunVisible * (1.0 - cov * 0.85));
         // stars
-        if (uNight > 0.01) {
+        if (uStarVis > 0.01) {
           vec3 sp = d * 260.0;
           vec3 cell = floor(sp);
           float h = hash13(cell);
           float star = step(0.9972, h) * smoothstep(0.42, 0.0, length(fract(sp) - 0.5));
           star *= 0.55 + 0.45 * sin(uTime * (1.5 + h * 3.0) + h * 80.0);
           float milky = smoothstep(0.3, 0.0, abs(dot(d, normalize(vec3(0.3, 0.2, 1.0))))) * cfbm(d.xz * 6.0) * 0.08;
-          col += (vec3(star * 1.6) + vec3(0.6, 0.65, 0.9) * milky) * uNight * smoothstep(0.0, 0.3, y) * (1.0 - cov);
+          col += (vec3(star * 1.6) + vec3(0.6, 0.65, 0.9) * milky) * uStarVis * smoothstep(0.0, 0.3, y) * (1.0 - cov);
         }
         // hazy moon
         float md = dot(d, uMoonDir);

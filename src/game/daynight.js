@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { U } from '../render/shaders.js';
 import { clamp, smoothstep, lerp } from '../core/math.js';
+import { Atmosphere, sampleSky } from '../render/atmosphere.js';
 
-// 昼夜：按太阳高度角在一组手调色板之间插值（四月、北纬 35°）
+// 昼夜（四月、北纬 35°）
+// 白天到日落：天空、阳光、天光、雾色都来自同一个大气散射模型，再加一个有限的「人眼适应」增益，
+// 所以晨昏的颜色与明暗是连续变化的；太阳落到地平线下以后，逐渐交给手调的「蓝调时刻」与「月夜」两层。
 const LAT = (35 * Math.PI) / 180;
 const DEC = (10 * Math.PI) / 180;
 
@@ -19,37 +22,22 @@ function solarDir(hours, dec = DEC, out = new THREE.Vector3()) {
   return { dir: out, elev: (e * 180) / Math.PI };
 }
 
-// 关键帧（sRGB 十六进制，内部转线性）
-const RAW_KEYS = [
-  { e: -20, zenith: '#070c22', horizon: '#18213f', fog: '#18203a', fogSun: '#1d2544', light: '#a9b8e8', lightI: 0.75, hemiSky: '#3f5290', hemiGround: '#1a1f33', hemiI: 1.6, cloudLit: '#2f3a60', cloudShade: '#141a30', glow: '#000000', night: 1.0, fogD: 0.00152, bloom: 0.95, exposure: 1.12 },
-  { e: -8, zenith: '#18265a', horizon: '#565890', fog: '#4f527f', fogSun: '#6e6190', light: '#8c9ad0', lightI: 0.32, hemiSky: '#52619e', hemiGround: '#25283e', hemiI: 1.55, cloudLit: '#6c6596', cloudShade: '#2f355c', glow: '#a8607e', night: 0.92, fogD: 0.00152, bloom: 0.85, exposure: 1.05 },
-  { e: -3, zenith: '#2c3d78', horizon: '#c9796e', fog: '#a77a86', fogSun: '#e48c74', light: '#ff8b55', lightI: 0.08, hemiSky: '#6c76ad', hemiGround: '#3f3236', hemiI: 1.45, cloudLit: '#e8927c', cloudShade: '#5a5180', glow: '#ff8a62', night: 0.7, fogD: 0.00145, bloom: 0.7, exposure: 1.02 },
-  { e: 0.5, zenith: '#3c5292', horizon: '#f59a72', fog: '#b897a0', fogSun: '#ffb084', light: '#ff9a5c', lightI: 1.2, hemiSky: '#7f8abd', hemiGround: '#5a4438', hemiI: 1.5, cloudLit: '#ffb48e', cloudShade: '#6d5f86', glow: '#ff9a62', night: 0.38, fogD: 0.00139, bloom: 0.6, exposure: 1.0 },
-  { e: 5, zenith: '#5874b4', horizon: '#ffc095', fog: '#d9c6c4', fogSun: '#ffcf9c', light: '#ffb878', lightI: 2.3, hemiSky: '#98a7d2', hemiGround: '#7c6649', hemiI: 1.6, cloudLit: '#ffe0c2', cloudShade: '#988aa8', glow: '#ffb47a', night: 0.08, fogD: 0.00132, bloom: 0.48, exposure: 1.0 },
-  { e: 12, zenith: '#6a8fce', horizon: '#f6dac0', fog: '#dcdde0', fogSun: '#f8dcbc', light: '#ffd4a4', lightI: 2.8, hemiSky: '#a9bde2', hemiGround: '#8a7d58', hemiI: 1.7, cloudLit: '#fff4e8', cloudShade: '#aeacc4', glow: '#ffd2a4', night: 0, fogD: 0.00125, bloom: 0.36, exposure: 1.0 },
-  { e: 28, zenith: '#6aa0dd', horizon: '#d8e7ef', fog: '#dce7ec', fogSun: '#f3ece0', light: '#fff2de', lightI: 3.1, hemiSky: '#b5cce9', hemiGround: '#8f8e63', hemiI: 1.8, cloudLit: '#ffffff', cloudShade: '#b9c4d8', glow: '#fff0da', night: 0, fogD: 0.00119, bloom: 0.3, exposure: 1.0 },
-  { e: 65, zenith: '#5e97dc', horizon: '#d2e4ef', fog: '#d8e5ec', fogSun: '#eef1ea', light: '#fffaf0', lightI: 3.3, hemiSky: '#b9d0ea', hemiGround: '#8e9165', hemiI: 1.85, cloudLit: '#ffffff', cloudShade: '#bcc8db', glow: '#fff4e6', night: 0, fogD: 0.00119, bloom: 0.28, exposure: 1.0 },
-];
-const COLOR_KEYS = ['zenith', 'horizon', 'fog', 'fogSun', 'light', 'hemiSky', 'hemiGround', 'cloudLit', 'cloudShade', 'glow'];
-const KEYS = RAW_KEYS.map((k) => {
-  const o = { ...k };
-  for (const c of COLOR_KEYS) o[c] = new THREE.Color(k[c]);
-  return o;
-});
-
-function sample(e) {
-  let i = 0;
-  while (i < KEYS.length - 2 && e > KEYS[i + 1].e) i++;
-  const a = KEYS[i], b = KEYS[i + 1];
-  const t = smoothstep(a.e, b.e, e);
-  const out = {};
-  for (const c of COLOR_KEYS) out[c] = a[c].clone().lerp(b[c], t);
-  for (const k of ['lightI', 'hemiI', 'night', 'fogD', 'bloom', 'exposure']) out[k] = lerp(a[k], b[k], t);
-  return out;
-}
+const col = (h) => new THREE.Color(h);
+// 蓝调时刻（太阳在地平线下 2°～8°）与月夜（-10° 以下）：sRGB 十六进制，内部为线性
+const BLUE = {
+  zenith: col('#1d2e66'), horizon: col('#4f5488'), fog: col('#4a4e78'), fogSun: col('#6a5c8a'),
+  hemiSky: col('#4a5892'), hemiGround: col('#23263b'), cloudLit: col('#625c8c'), cloudShade: col('#2c3258'),
+};
+const NIGHT = {
+  zenith: col('#070c22'), horizon: col('#18213f'), fog: col('#18203a'), fogSun: col('#1d2544'),
+  hemiSky: col('#3a4c86'), hemiGround: col('#181d30'), cloudLit: col('#2f3a60'), cloudShade: col('#141a30'),
+  moon: col('#a9b8e8'),
+};
+const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+const E_SUN = 20;
 
 export class DayNight {
-  constructor({ scene, sky, sun, hemi, startHour = 16.5 }) {
+  constructor({ scene, sky, sun, hemi, startHour = 16.5, renderer }) {
     this.scene = scene;
     this.sky = sky;
     this.sun = sun;
@@ -61,13 +49,35 @@ export class DayNight {
     this.moonDir = new THREE.Vector3();
     this.lightDir = new THREE.Vector3();
     this.elev = 0;
-    this.state = sample(20);
     this.cloud = 0.55;
     this.cloudTarget = 0.55;
     this.cloudTimer = 0;
     this.day = 1;
     this.listeners = [];
     this.lastHourInt = Math.floor(startHour);
+    this.atmo = renderer ? new Atmosphere(renderer) : null;
+    if (this.atmo) sky.uniforms.uSkyLUT.value = this.atmo.texture;
+    this.calibrate();
+    this._cacheDir = new THREE.Vector3(0, -2, 0);
+    this._phys = null;
+    this.state = { bloom: 0.3, exposure: 1 };
+    this.tmp = { a: new THREE.Color(), b: new THREE.Color() };
+  }
+  // 以正午为基准标定：正午的天光、雾色、阳光与原来的手调色板一致
+  calibrate() {
+    const noon = solarDir(12).dir.clone();
+    const s = sampleSky(noon);
+    this.kSun = 1 / Math.max(...s.T);
+    this.kSky = lum([0.485, 0.631, 0.823]) / (lum(s.irr) * E_SUN);
+    this.kRad = lum([0.686, 0.783, 0.836]) / (lum(s.away) * E_SUN);
+    this.irrNoon = lum(s.irr);
+  }
+  physAt(sd) {
+    if (!this._phys || sd.dot(this._cacheDir) < 0.99999) {
+      this._phys = sampleSky(sd);
+      this._cacheDir.copy(sd);
+    }
+    return this._phys;
   }
   onHour(fn) {
     this.listeners.push(fn);
@@ -97,55 +107,110 @@ export class DayNight {
     this.cloud = lerp(this.cloud, this.cloudTarget, 1 - Math.exp(-dt * 0.05));
     this.apply();
   }
+  // 在主渲染之前调用：必要时重算天空查找表
+  prepare() {
+    if (this.atmo) this.atmo.update(this.sunDir);
+  }
   apply() {
     const { dir: sd, elev } = solarDir(this.hours, DEC, this.sunDir);
     const { dir: md } = solarDir(this.hours + 12, -DEC * 0.3, this.moonDir);
     this.elev = elev;
-    const s = sample(elev);
-    this.state = s;
+    const P = this.physAt(sd);
+    // 人眼适应：按天光（阴影处与天空）的亮度测光，越暗增益越大但有上限，黄昏仍比白天暗
+    const G = clamp(Math.pow(this.irrNoon / Math.max(lum(P.irr), 1e-12), 0.7), 1, 14);
+    const wN = smoothstep(-7, -14, elev); // 月夜
+    const wB = smoothstep(1.5, -3, elev) * (1 - wN); // 蓝调时刻
+    const kR = this.kRad * E_SUN * G;
+    const v3 = (a, k = 1) => new THREE.Color(a[0] * k, a[1] * k, a[2] * k);
+    // 太阳正对方向的眩光在浓霞里极亮，压一压免得雾色发白
+    const soft = (c, m = 2.2) => {
+      const l = Math.max(c.r, c.g, c.b);
+      return l > 0 ? c.multiplyScalar((m * l) / (m + l) / l) : c;
+    };
+    // 多次散射让远处的霞气偏白：给雾色、地平线色降一部分饱和度
+    const desat = (c, k) => {
+      const l = c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722;
+      return c.lerp(new THREE.Color(l, l, l), k);
+    };
+    const mixLayers = (phys, key) => phys.add(BLUE[key].clone().multiplyScalar(wB)).add(NIGHT[key].clone().multiplyScalar(wN));
+
+    // 阳光：透射率 × 部分适应；太阳下沉到地平线以下约 1° 时完全消失（含大气折射）
+    const vis = smoothstep(-1.2, 0.8, elev);
+    const sunUnit = desat(v3(P.T, this.kSun * G * vis), 0.15);
+    // 天光（半球光）：物理辐照度，略降饱和以保持柔和的暗部
+    const sky = v3(P.irr, this.kSky * E_SUN * G);
+    const sl = sky.r * 0.2126 + sky.g * 0.7152 + sky.b * 0.0722;
+    sky.lerp(new THREE.Color(sl, sl, sl), 0.28);
+    const hemiSky = mixLayers(sky.clone(), 'hemiSky');
+    const albedo = [0.2, 0.21, 0.11];
+    const gl = new THREE.Color().copy(sunUnit).multiplyScalar(Math.max(sd.y, 0) * 1.4).add(sky.clone().multiplyScalar(0.45));
+    const hemiGround = mixLayers(new THREE.Color(gl.r * albedo[0], gl.g * albedo[1], gl.b * albedo[2]), 'hemiGround');
+    const fog = mixLayers(desat(soft(v3(P.away, kR), 1.6), 0.45), 'fog');
+    const fogSun = mixLayers(desat(soft(v3(P.toward, kR), 2.4), 0.35), 'fogSun');
+    const zenith = mixLayers(v3(P.zen, kR), 'zenith');
+    const horizon = mixLayers(desat(soft(v3(P.horizon, kR), 1.8), 0.3), 'horizon');
 
     U.uSunDir.value.copy(sd);
-    U.uSunColor.value.copy(s.light);
-    U.uSkyZenith.value.copy(s.zenith);
-    U.uSkyHorizon.value.copy(s.horizon);
-    U.uFogColor.value.copy(s.fog);
-    U.uFogSunColor.value.copy(s.fogSun);
-    U.uFogDensity.value = s.fogD;
-    U.uNight.value = s.night;
-    U.uDay.value = smoothstep(-3, 6, elev);
-    U.uHemiSky.value.copy(s.hemiSky);
-    U.uHemiGround.value.copy(s.hemiGround);
+    U.uSunColor.value.copy(elev > -1.5 ? sunUnit : NIGHT.moon.clone().multiplyScalar(0.25));
+    U.uSkyZenith.value.copy(zenith);
+    U.uSkyHorizon.value.copy(horizon);
+    U.uFogColor.value.copy(fog);
+    U.uFogSunColor.value.copy(fogSun);
+    // 雾：夜里略浓；日出前后有一层低低的晨雾
+    const h = this.hours;
+    const mist = smoothstep(4.2, 5.6, h) * (1 - smoothstep(6.3, 8.8, h));
+    const dusk = smoothstep(17.6, 18.6, h) * (1 - smoothstep(19.2, 20.5, h));
+    U.uFogDensity.value = lerp(0.00119, 0.00152, wN + wB * 0.6) * (1 + 0.85 * mist + 0.15 * dusk);
+    U.uNight.value = 1 - smoothstep(-11, 5.5, elev);
+    U.uDay.value = smoothstep(-1.5, 1.5, elev);
+    U.uHemiSky.value.copy(hemiSky);
+    U.uHemiGround.value.copy(hemiGround);
 
     const su = this.sky.uniforms;
+    su.uSkyGain.value = this.atmo ? kR : 0;
+    su.uNightZenith.value.copy(BLUE.zenith).multiplyScalar(wB).add(NIGHT.zenith.clone().multiplyScalar(wN));
+    su.uNightHorizon.value.copy(BLUE.horizon).multiplyScalar(wB).add(NIGHT.horizon.clone().multiplyScalar(wN));
+    if (!this.atmo) {
+      // 无查找表时退回到渐变（测试环境）
+      su.uNightZenith.value.copy(zenith);
+      su.uNightHorizon.value.copy(horizon);
+    }
     su.uMoonDir.value.copy(md);
-    su.uSunGlow.value.copy(s.glow);
-    su.uCloudLit.value.copy(s.cloudLit);
-    su.uCloudShade.value.copy(s.cloudShade);
+    su.uSunGlow.value.copy(sunUnit).multiplyScalar(0.22);
+    su.uCloudLit.value.copy(sunUnit).multiplyScalar(0.95).add(sky.clone().multiplyScalar(0.32));
+    mixLayers(su.uCloudLit.value, 'cloudLit');
+    su.uCloudShade.value.copy(sky).multiplyScalar(0.62).add(fog.clone().multiplyScalar(0.22 * (1 - wN - wB)));
+    mixLayers(su.uCloudShade.value, 'cloudShade');
     su.uCloudCover.value = this.cloud;
     su.uSunVisible.value = smoothstep(-4, -0.5, elev);
+    su.uStarVis.value = smoothstep(-6, -13, elev);
     su.uMoonVisible.value = smoothstep(-1, -8, elev) * smoothstep(-0.05, 0.08, md.y);
 
-    // 平行光：白天随太阳，夜里换成月光
-    if (elev > -2.5) {
+    // 平行光：白天随太阳，夜里换成月光（两者在 -1.5° 附近都接近零，切换时不跳变）
+    if (elev > -1.5) {
       this.lightDir.copy(sd);
       if (this.lightDir.y < 0.06) {
         this.lightDir.y = 0.06;
         this.lightDir.normalize();
       }
-      this.sun.color.copy(s.light);
-      this.sun.intensity = s.lightI * smoothstep(-2.5, 0.0, elev) + (elev < 0 ? 0 : 0);
+      const m = Math.max(sunUnit.r, sunUnit.g, sunUnit.b, 1e-6);
+      this.sun.color.copy(sunUnit).multiplyScalar(1 / m);
+      this.sun.intensity = 3.3 * m;
     } else {
       this.lightDir.copy(md);
       if (this.lightDir.y < 0.15) {
         this.lightDir.y = 0.15;
         this.lightDir.normalize();
       }
-      this.sun.color.copy(s.light);
-      this.sun.intensity = s.lightI * smoothstep(-2.5, -6, elev) * smoothstep(-0.05, 0.25, md.y);
+      this.sun.color.copy(NIGHT.moon);
+      this.sun.intensity = 0.75 * smoothstep(-2.5, -9, elev) * smoothstep(-0.05, 0.25, md.y);
     }
-    this.hemi.color.copy(s.hemiSky);
-    this.hemi.groundColor.copy(s.hemiGround);
-    this.hemi.intensity = s.hemiI;
+    this.hemi.color.copy(hemiSky);
+    this.hemi.groundColor.copy(hemiGround);
+    this.hemi.intensity = 1.85;
+    this.state.bloom = 0.28 + 0.67 * U.uNight.value;
+    this.state.exposure = 1.0 + 0.1 * wN;
+    this.state.G = G;
   }
   get timeString() {
     const h = Math.floor(this.hours);
