@@ -49,6 +49,8 @@ export function buildShrine(ctx) {
     const bs = chunks.at((st.x0 + st.x1) / 2, (st.z0 + st.z1) / 2);
     const steps = Math.round((st.h1 - st.h0) / 0.2);
     const srot = Math.atan2(ux, uz);
+    // 石阶与两侧石墙下不长草
+    ctx.noGrass.push({ x: (st.x0 + st.x1) / 2, z: (st.z0 + st.z1) / 2, hw: st.w / 2 + 0.55, hd: len / 2 + 0.5, rot: srot, margin: 0.1 });
     for (let i = 0; i < steps; i++) {
       const t0 = i / steps, t1 = (i + 1) / steps;
       const x = lerp(st.x0, st.x1, (t0 + t1) / 2), z = lerp(st.z0, st.z1, (t0 + t1) / 2);
@@ -335,6 +337,8 @@ export function buildTemple(ctx) {
     const bs = chunks.at((st.x0 + st.x1) / 2, (st.z0 + st.z1) / 2);
     const steps = Math.round((st.h1 - st.h0) / 0.2);
     const srot = Math.atan2(ux, uz);
+    // 石阶与两侧石墙下不长草
+    ctx.noGrass.push({ x: (st.x0 + st.x1) / 2, z: (st.z0 + st.z1) / 2, hw: st.w / 2 + 0.55, hd: len / 2 + 0.5, rot: srot, margin: 0.1 });
     for (let i = 0; i < steps; i++) {
       const t0 = i / steps, t1 = (i + 1) / steps;
       const x = lerp(st.x0, st.x1, (t0 + t1) / 2), z = lerp(st.z0, st.z1, (t0 + t1) / 2);
@@ -1029,6 +1033,10 @@ export function buildPark(ctx, terrain) {
   colliders.addBox(px + 6 * c + 1 * s, pz - 6 * s + 1 * c, 0.7, 0.7, 0.3, y - 1, y + 2.2);
   // 沙坑
   b.box(-5, -0.05, 2, 4, 0.18, 3, '#cdb48a', { topColor: '#e3cfa4' });
+  {
+    const c0 = Math.cos(0.3), s0 = Math.sin(0.3);
+    ctx.noGrass.push({ x: px - 5 * c0 + 2 * s0, z: pz + 5 * s0 + 2 * c0, hw: 2, hd: 1.5, rot: 0.3 });
+  }
   // 东屋（凉亭）
   const gx = P.x - 16, gz = P.z - 10;
   const gy = terrain.heightAt(gx, gz);
@@ -1036,6 +1044,7 @@ export function buildPark(ctx, terrain) {
   bg.place(gx, gy, gz, 0.6);
   bg.pattern(PAT.NONE, 0);
   bg.box(0, -0.2, 0, 4.6, 0.35, 4.6, '#b6ae9f');
+  ctx.noGrass.push({ x: gx, z: gz, hw: 2.3, hd: 2.3, rot: 0.6 });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) bg.box(sx * 1.9, 0, sz * 1.9, 0.18, 2.6, 0.18, '#6b4a33');
   hipRoof(bg, 4.4, 4.4, 2.6, 3.9, 0.5, '#5b4a3e', {});
   bg.push();
@@ -1062,6 +1071,7 @@ export function buildPark(ctx, terrain) {
     bh.cylinder(0.9, 0.02, -0.5, 0.06, 0.06, 0.25, 6, '#5c8a3a');
     bh.cylinder(1.05, 0.02, -0.45, 0.04, 0.05, 0.12, 6, '#f2f2f2');
     ctx.hanami.push({ x: hx, z: hz, y: hy, rot: r });
+    ctx.noGrass.push({ x: hx, z: hz, hw: 1.6, hd: 1.3, rot: r, margin: 0.12 });
   }
   // 公园樱花
   for (let k = 0; k < 16; k++) {

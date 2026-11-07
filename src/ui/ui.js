@@ -195,6 +195,11 @@ export class UI {
     $('.c-cat', this.root).textContent = cats;
   }
   prompt(text, key = 'E') {
+    // 每帧都会调用：内容没变就不碰 DOM
+    const k = this.game.input.lastInput === 'gamepad' ? 'X' : key;
+    if (this._prompt === text && this._promptKey === k) return;
+    this._prompt = text;
+    this._promptKey = k;
     const p = $('.hud-prompt', this.root);
     const tb = $('[data-t="interact"]', this.el.touch);
     if (!text) {
@@ -204,7 +209,7 @@ export class UI {
     }
     p.classList.remove('off');
     $('span', p).textContent = text;
-    $('kbd', p).textContent = this.game.input.lastInput === 'gamepad' ? 'X' : key;
+    $('kbd', p).textContent = k;
     tb.classList.remove('hidden');
     tb.textContent = text.length > 6 ? text.slice(0, 6) : text;
   }

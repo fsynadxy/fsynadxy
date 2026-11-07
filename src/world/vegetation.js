@@ -20,6 +20,8 @@ float hAt(vec2 xz){
   if (f.x > f.y) return ha + (hb - ha) * f.x + (hd - hb) * f.y;
   return ha + (hc - ha) * f.y + (hd - hc) * f.x;
 }
+uniform sampler2D uMask; uniform vec4 uMRect; // x0, 0, size(m), 0
+float maskAt(vec2 xz){ return texture2D(uMask, (xz - uMRect.xx) / uMRect.z).r; }
 vec4 groundAt(vec2 xz){
   vec2 uv = ((xz - uHRect.xx) / uHRect.y + 0.5) / uHRect.z;
   return texture2D(uGround, uv);
@@ -35,7 +37,7 @@ function tiledPosition() {
 }
 
 export class GroundCover {
-  constructor(terrainTex, densityTex, quality) {
+  constructor(terrainTex, densityTex, quality, mask) {
     this.group = new THREE.Group();
     this.group.name = 'groundcover';
     const { hTex, cTex, rect } = terrainTex;
@@ -55,6 +57,8 @@ export class GroundCover {
       uNight: U.uNight,
       uDensity: { value: densityTex.tex },
       uDRect: { value: new THREE.Vector4(densityTex.rect.x0, densityTex.rect.z0, densityTex.rect.size, 0) },
+      uMask: { value: mask.tex },
+      uMRect: { value: new THREE.Vector4(mask.rect.x0, 0, mask.rect.size, 0) },
       ...fogUniforms(),
     };
     this.shared = base;
@@ -119,7 +123,7 @@ export class GroundCover {
         void main(){
           ${tiledPosition()}
           vec4 gr = groundAt(wxz);
-          float dens = gr.a;
+          float dens = gr.a * maskAt(wxz);
           float fade = 1.0 - smoothstep(uTile * 0.32, uTile * 0.5, dist);
           float h = (0.28 + aRnd.x * 0.42) * smoothstep(aRnd.y * 0.9, aRnd.y * 0.9 + 0.12, dens) * fade;
           float rot = aRnd.z * 6.2832;
@@ -194,7 +198,7 @@ export class GroundCover {
           ${tiledPosition()}
           vec4 gr = groundAt(wxz);
           float fade = 1.0 - smoothstep(uTile * 0.3, uTile * 0.5, dist);
-          float vis = step(0.55, gr.a) * step(aRnd.y, 0.85) * fade;
+          float vis = step(0.55, gr.a * maskAt(wxz)) * step(aRnd.y, 0.85) * fade;
           float sc = (0.8 + aRnd.x * 0.8) * vis;
           vec3 p = position * sc;
           p.xz += uWind * sin(uTime * 2.0 + aRnd.z * 20.0) * 0.02 * position.y * 6.0;
@@ -258,7 +262,7 @@ export class GroundCover {
           float dens = texture2D(uDensity, duv).r;
           vec4 gr = groundAt(wxz);
           float fade = 1.0 - smoothstep(uTile * 0.3, uTile * 0.5, dist);
-          float vis = smoothstep(aRnd.y, aRnd.y + 0.1, dens * 1.6) * fade * step(0.05, gr.a + 0.06);
+          float vis = smoothstep(aRnd.y, aRnd.y + 0.1, dens * 1.6) * fade * step(0.5, maskAt(wxz));
           float rot = aRnd.z * 6.2832;
           float c = cos(rot), s = sin(rot);
           vec3 p = position * vec3(0.09, 1.0, 0.07) * vis * (0.8 + aRnd.x * 0.6);

@@ -44,6 +44,7 @@ export class World {
       spots: {},
       treeSpots: [],
       noTree: [],
+      noGrass: [], // { x, z, hw, hd, rot, margin }：不长草的区域
       landmarkHeights: {},
     };
   }
@@ -111,6 +112,7 @@ export class World {
         for (const m of this.terrain.buildMeshes(this.terrainMat)) this.group.add(m);
         this.terrainTex = this.terrain.buildTextures();
         for (const l of this.lots) this.terrain.clearGrassRect(l.fp, 0.6);
+        this.terrain.initGrassMask();
         this.density = makeDensityTexture(sak.map((t) => ({ x: t.x, z: t.z, r: t.r * 1.5 })));
       }],
       ['盖起町屋', () => this.buildTown()],
@@ -130,7 +132,7 @@ export class World {
         this.group.add(this.forest.build(this.rng));
         this.petals = new FallingPetals(this.density, Math.round(3600 * this.quality.petals));
         this.scene.add(this.petals.mesh);
-        this.ground = new GroundCover(this.terrainTex, this.density, this.quality);
+        this.ground = new GroundCover(this.terrainTex, this.density, this.quality, this.buildGrassMask());
         this.scene.add(this.ground.group);
       }],
       ['悬起天空', () => {
@@ -147,6 +149,18 @@ export class World {
         this.buildLightPools();
       }],
     ];
+  }
+
+  // 禁草遮罩：建筑占地、可行走表面（桥、站台、栈桥、坡道）、实体碰撞盒，以及各处登记的铺地
+  buildGrassMask() {
+    const T = this.terrain, ctx = this.ctx;
+    for (const l of this.lots) T.maskRect(l.fp, 0.45);
+    for (const o of ctx.noGrass) T.maskRect(o, o.margin ?? 0.25);
+    for (const s of this.colliders.surfaces) T.maskRect(s, 0.3);
+    for (const it of this.colliders.items) if (it.type === 'box' && it.tag !== 'low' && it.hw * it.hd < 1200) T.maskRect(it, 0.15);
+    const sc = SITES.school;
+    T.maskRect({ x: sc.x + 4, z: sc.z + 12, hw: 30, hd: 16, rot: 0 }, 0);
+    return T.maskTexture();
   }
 
   // ---------------------------------------------------------------- 树木
@@ -355,6 +369,25 @@ export class World {
   }
 
   // ---------------------------------------------------------------- 町屋与民居
+  buildApron(b, lot, W) {
+    const road = ROADS.find((r) => r.name === lot.road);
+    const T = this.terrain;
+    const hw = lot.W / 2 + 0.04, z0 = lot.D / 2 - 0.05, z1 = lot.D / 2 + (lot.setback || 1.2) + 0.12;
+    // 商店街这类叠加的石板路覆盖到门前时，也铺石板
+    const [ax, az] = W(0, lot.D / 2 + (lot.setback || 1.2) * 0.5);
+    const onOverlay = ROADS.some((r) => r.overlay && r.type === 'stone' && r.pts.some((p) => Math.hypot(p[0] - ax, p[1] - az) < r.width / 2 + 3));
+    const stone = !road || road.type === 'stone' || road.type === 'promenade' || onOverlay;
+    b.place(lot.x, lot.y, lot.z, lot.rot);
+    b.pattern(stone ? PAT.STONE : PAT.GRAVEL, 0);
+    const nu = Math.max(2, Math.ceil(lot.W / 1.2)), nv = 3;
+    b.surface((u, v) => {
+      const lx = lerp(-hw, hw, u), lz = lerp(z0, z1, v);
+      const [x, z] = W(lx, lz);
+      return [lx, T.heightAt(x, z) - lot.y + 0.03, lz];
+    }, nu, nv, stone ? '#a39c8f' : '#a9a59b', { flip: true, uvFn: (u, v) => [lerp(-hw, hw, u) + lot.x * 0.37, lerp(z0, z1, v)] });
+    const [cx, cz] = W(0, (z0 + z1) / 2);
+    this.ctx.noGrass.push({ x: cx, z: cz, hw, hd: (z1 - z0) / 2, rot: lot.rot, margin: 0.15 });
+  }
   buildTown() {
     const ctx = this.ctx;
     const rng = new RNG(2718);
@@ -374,6 +407,8 @@ export class World {
       lot.out = out;
       const c = Math.cos(lot.rot), s = Math.sin(lot.rot);
       const W = (lx, lz) => [lot.x + lx * c + lz * s, lot.z - lx * s + lz * c];
+      // 町屋门前到路边铺一条石板（犬走り），不再露出一条窄草带
+      if (lot.type === 'machiya' && lot.road) this.buildApron(b, lot, W);
       this.colliders.addBox(lot.x, lot.z, lot.W / 2 + 0.05, lot.D / 2 + 0.05, lot.rot, lot.y - 2, lot.y + (out.height || 8));
       for (const L of out.lights || []) {
         const [x, z] = W(L[0], L[2]);

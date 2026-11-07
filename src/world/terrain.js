@@ -272,6 +272,20 @@ export class Terrain {
     }
     return best;
   }
+  // 某点若落在路面（含商店街这类叠加路面）宽度 + margin 内，返回路面剖面高度，否则 null
+  roadSurfaceAt(x, z, margin = 0) {
+    const nr = this.nearestRoad(x, z, 8);
+    if (nr && nr.d < nr.road.width / 2 + margin) return this.roadHeightAt(nr.road, nr.i, nr.t);
+    for (const r of ROADS) {
+      if (!r.overlay || !r.h) continue;
+      const P = r.pts;
+      for (let i = 0; i < P.length - 1; i++) {
+        const q = closestOnSegment(x, z, P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]);
+        if (q.d < r.width / 2 + margin) return this.roadHeightAt(r, i, q.t);
+      }
+    }
+    return null;
+  }
   heightFull(x, z) {
     const rq = riverNearest(x, z);
     let h = this.preRoad(x, z, rq);
@@ -344,7 +358,13 @@ export class Terrain {
           const w = 1 - smoothstep(0, p.blend, d);
           if (w <= 0) continue;
           const k = j * n + i;
-          H[k] = lerp(H[k], p.y, w);
+          let hNew = lerp(H[k], p.y, w);
+          // 地基不得把路面盖住：路宽范围内的地形不高于路面
+          if (hNew > H[k]) {
+            const rh = this.roadSurfaceAt(xs[i], xs[j], 0.6);
+            if (rh !== null) hNew = Math.min(hNew, Math.max(H[k], rh - 0.03));
+          }
+          H[k] = hNew;
         }
     }
   }
@@ -621,6 +641,37 @@ export class Terrain {
     // 映射：世界 x → 纹理坐标
     this.texRect = { x0: xs[i0], size: size, step: 2 };
     return { hTex, cTex, rect: this.texRect };
+  }
+
+  // ---------- 禁草遮罩：0.5 m 精度，台阶、站台、铺地、野餐垫、建筑占地等处不长草 ----------
+  initGrassMask() {
+    const res = 0.5, x0 = -WORLD.inner, size = Math.round((WORLD.inner * 2) / res);
+    this.gmask = { data: new Uint8Array(size * size).fill(255), size, res, x0 };
+  }
+  // o: { x, z, hw, hd, rot }（rot 与 rotation.y 同约定）
+  maskRect(o, margin = 0.2) {
+    const M = this.gmask;
+    if (!M) return;
+    const { data, size, res, x0 } = M;
+    const hw = o.hw + margin, hd = o.hd + margin;
+    const r = Math.hypot(hw, hd);
+    const c = Math.cos(o.rot || 0), s = Math.sin(o.rot || 0);
+    const ia = Math.max(0, Math.floor((o.x - r - x0) / res)), ib = Math.min(size - 1, Math.ceil((o.x + r - x0) / res));
+    const ja = Math.max(0, Math.floor((o.z - r - x0) / res)), jb = Math.min(size - 1, Math.ceil((o.z + r - x0) / res));
+    for (let j = ja; j <= jb; j++)
+      for (let i = ia; i <= ib; i++) {
+        const dx = x0 + (i + 0.5) * res - o.x, dz = x0 + (j + 0.5) * res - o.z;
+        const lx = dx * c - dz * s, lz = dx * s + dz * c;
+        if (Math.abs(lx) < hw && Math.abs(lz) < hd) data[j * size + i] = 0;
+      }
+  }
+  maskTexture() {
+    const M = this.gmask;
+    const tex = new THREE.DataTexture(M.data, M.size, M.size, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.minFilter = tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return { tex, rect: { x0: M.x0, size: M.size * M.res } };
   }
 
   // 抹掉建筑占地内的草（在建筑放置后调用）

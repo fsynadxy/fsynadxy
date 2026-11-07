@@ -469,7 +469,9 @@ export class Game {
         this.ui.updateCounts(n, Object.keys(S.cats).length);
         this.ui.toast(`<span class="mark">御朱印</span> ${st.name}（${n}/8）`);
         this.ui.newStamp = st.id;
-        setTimeout(() => this.ui.openPanel('book', 'stamps'), 500);
+        setTimeout(() => {
+          if (this.mode === 'play' && !this.ui.open) this.ui.openPanel('book', 'stamps');
+        }, 500);
         this.saveNow();
         if (n === STAMPS.length && !S.finale) this.pendingFinale = true;
         return;
@@ -515,7 +517,7 @@ export class Game {
       case 'bench': {
         p.sitOn(it.bench);
         if (this.rig.firstPerson) this.rig.faceCharYaw(it.bench.rot, -0.02);
-        this.ui.subtitle('坐下来看看花吧。按住 T 让时光流逝，移动即可起身。', 4200);
+        this.ui.subtitle(this.input.isTouch ? '坐下来看看花吧。推动摇杆或点「起身」即可站起来。' : '坐下来看看花吧。按住 T 让时光流逝，移动或再按 E 即可起身。', 4200);
         A.ui('wood');
         return;
       }
@@ -674,7 +676,13 @@ export class Game {
     // 玩家
     if (this.mode === 'play' || this.mode === 'dialog') {
       if (playing) this.rig.handleLook(input, dt);
-      if (this.player.mode === 'sit' && playing && (input.moveMag > 0.3 || input.wasPressed('jump'))) this.player.standUp();
+      // 起身：移动、跳，或再按一次交互（触屏上的「起身」按钮）
+      if (this.player.mode === 'sit' && playing && (input.moveMag > 0.3 || input.wasPressed('jump') || input.wasPressed('interact'))) {
+        this.player.standUp();
+        input.virtualPressed.delete('interact');
+        input.pressed.delete('KeyE');
+        input.pressed.delete('Enter');
+      }
       if (this.player.mode === 'pet') {
         this.petTimer -= dt;
         if (this.petTimer <= 0) this.player.mode = 'walk';
