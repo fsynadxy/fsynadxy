@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Character } from './character.js';
 import { clamp, damp, dampAngle, lerp } from '../core/math.js';
-import { WORLD } from '../world/layout.js';
+import { WORLD, riverNearest, riverHalfWidth, isCanal } from '../world/layout.js';
 
 // 第三人称角色控制：加速度移动、碰撞、地面/桥面、浅水、陡坡与地图边界
 export class Player {
@@ -104,6 +104,17 @@ export class Player {
       this.vel.x *= 0.2;
       this.vel.z *= 0.2;
       g = this.groundAt(this.pos.x, this.pos.z, this.pos.y);
+    }
+    // 运河压顶石与护岸斜面不可站立（桥面除外）
+    if (!g.tag) {
+      const rq = riverNearest(this.pos.x, this.pos.z);
+      if (isCanal(rq.s) && rq.d < riverHalfWidth(rq.s) + 2.35) {
+        this.pos.x = prev.x;
+        this.pos.z = prev.z;
+        this.vel.x *= 0.2;
+        this.vel.z *= 0.2;
+        g = this.groundAt(this.pos.x, this.pos.z, this.pos.y);
+      }
     }
     const water = this.world.terrain.waterAt(this.pos.x, this.pos.z);
     const depth = water - g.h;

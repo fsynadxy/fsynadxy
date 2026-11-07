@@ -194,6 +194,7 @@ export class Game {
     this.audio.hour = this.daynight.hours;
     this.ui.closePanel(true);
     const go = () => {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       this.ui.hideTitle();
       this.mode = 'play';
       this.rig.follow();

@@ -352,6 +352,8 @@ export class AudioEngine {
   scheduleMusic() {
     if (!this.ctx || !this.musicOn) return;
     const ctx = this.ctx;
+    // 后台标签页恢复时不要一口气补播积压的音符
+    if (this.nextNote < ctx.currentTime - 0.3) this.nextNote = ctx.currentTime + 0.6;
     const ahead = ctx.currentTime + 1.2;
     const hour = this.hour ?? 16;
     const night = hour < 5.5 || hour > 18.6;

@@ -111,6 +111,8 @@ export class UI {
       const b = e.target.closest('[data-act]');
       if (b) {
         this.audio.ui('tap');
+        // 交出焦点，避免之后按空格/回车再次触发这个按钮
+        if (b.closest('#hud') && b.blur) b.blur();
         this.game.onUIAction(b.dataset.act);
       }
     });
