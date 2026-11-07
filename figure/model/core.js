@@ -233,14 +233,26 @@ class UBuf {
   }
 }
 
+// ---------- 精度档位 ----------
+// standard：约 400 万面，浏览器里流畅；ultra：≥ 2000 万面（网格加密 + 每束头发表面铺细发丝）
+export const DETAIL = { level: 'standard', res: 1, lockSeg: 0.0055, lockSides: 12, fineSeg: 0.008, strandsPerLock: 0 };
+export function setDetail(level) {
+  if (level === 'ultra') Object.assign(DETAIL, { level, res: 1.6, lockSeg: 0.0035, lockSides: 16, fineSeg: 0.005, strandsPerLock: 34 });
+  else Object.assign(DETAIL, { level: 'standard', res: 1, lockSeg: 0.0055, lockSides: 12, fineSeg: 0.008, strandsPerLock: 0 });
+}
+// 按档位缩放网格分段数
+export const RES = (n) => Math.max(2, Math.round(n * DETAIL.res));
+
 // ---------- 网格构建器 ----------
-// 每个 Mesh 对应一种材质；顶点带位置与线性顶点色，法线在最后按面积加权统一计算。
+// 每个 Mesh 对应一种材质；顶点带位置与线性顶点色。法线默认在最后按面积加权统一计算；
+// explicitNormals 的网格（细发丝）由调用方逐顶点给出法线（用发量整体的朝向来着色，避免细管子的明暗噪点）。
 export class Mesh {
-  constructor(name) {
+  constructor(name, opts = {}) {
     this.name = name;
     this.P = new FBuf();
     this.C = new FBuf();
     this.I = new UBuf();
+    this.Nb = opts.explicitNormals ? new FBuf() : null;
     this.normals = null;
   }
   get vertexCount() {
@@ -249,13 +261,19 @@ export class Mesh {
   get triangleCount() {
     return this.I.n / 3;
   }
-  vert(p, c) {
+  vert(p, c, n) {
     const P = this.P, C = this.C;
     P.reserve(3);
     C.reserve(3);
     const i = P.n / 3;
     P.a[P.n++] = p[0]; P.a[P.n++] = p[1]; P.a[P.n++] = p[2];
     C.a[C.n++] = c[0]; C.a[C.n++] = c[1]; C.a[C.n++] = c[2];
+    if (this.Nb) {
+      const N = this.Nb;
+      N.reserve(3);
+      const m = n || [0, 1, 0];
+      N.a[N.n++] = m[0]; N.a[N.n++] = m[1]; N.a[N.n++] = m[2];
+    }
     return i;
   }
   tri(a, b, c) {
@@ -268,7 +286,7 @@ export class Mesh {
   }
 
   // 参数曲面网格。
-  // sample(u, v) 返回 { p:[x,y,z], c:[r,g,b] }（或直接返回点，此时用 opts.color）。
+  // sample(u, v) 返回 { p:[x,y,z], c:[r,g,b], n? }（或直接返回点，此时用 opts.color）。
   // u ∈ [0,1] 共 nu 段；v 方向 wrap 时共 nv 个点首尾相接，否则 nv 段。
   // pole0/pole1：u=0 / u=1 处收成单个顶点。法线方向为 ∂u × ∂v，必要时 flip。
   grid(nu, nv, sample, opts = {}) {
@@ -278,27 +296,28 @@ export class Mesh {
     const rows = [];
     const get = (u, v) => {
       const r = sample(u, v);
-      if (Array.isArray(r)) return { p: r, c: color };
-      return { p: r.p, c: r.c || color };
+      if (Array.isArray(r)) return { p: r, c: color, n: null };
+      return { p: r.p, c: r.c || color, n: r.n || null };
     };
     for (let i = 0; i <= nu; i++) {
       const u = i / nu;
       if ((i === 0 && opts.pole0) || (i === nu && opts.pole1)) {
         // 极点：对一圈取平均，避免采样方向带来的偏差
-        let px = 0, py = 0, pz = 0, cr = 0, cg = 0, cb = 0;
+        let px = 0, py = 0, pz = 0, cr = 0, cg = 0, cb = 0, nx = 0, ny = 0, nz = 0;
         const k = 8;
         for (let j = 0; j < k; j++) {
           const s = get(u, j / k);
           px += s.p[0]; py += s.p[1]; pz += s.p[2];
           cr += s.c[0]; cg += s.c[1]; cb += s.c[2];
+          if (s.n) { nx += s.n[0]; ny += s.n[1]; nz += s.n[2]; }
         }
-        rows.push(this.vert([px / k, py / k, pz / k], [cr / k, cg / k, cb / k]));
+        rows.push(this.vert([px / k, py / k, pz / k], [cr / k, cg / k, cb / k], this.Nb ? norm([nx, ny, nz]) : null));
         continue;
       }
       const start = this.P.n / 3;
       for (let j = 0; j < cols; j++) {
         const s = get(u, j / nv);
-        this.vert(s.p, s.c);
+        this.vert(s.p, s.c, s.n);
       }
       rows.push(start);
     }
@@ -318,8 +337,8 @@ export class Mesh {
     }
   }
 
-  // 沿曲线扫掠的管状体。pts: 中心线点列；section(t, a, ctx) 返回截面偏移 [n分量, b分量] 与可选颜色
-  // a ∈ [0, TAU)；ctx 提供标架，便于做朝向相关的形状。
+  // 沿曲线扫掠的管状体。pts: 中心线点列；section(t, a, i) 返回截面偏移 [n分量, b分量(, t分量)]
+  // 或 { o, c, n }；a ∈ [0, TAU)，i 为中心线点序号。
   tube(pts, nv, section, opts = {}) {
     const n = pts.length - 1;
     const fr = opts.frames || transportFrames(pts, opts.up);
@@ -338,7 +357,7 @@ export class Mesh {
           p[1] + N[i][1] * off[0] + B[i][1] * off[1] + T[i][1] * (off[2] || 0),
           p[2] + N[i][2] * off[0] + B[i][2] * off[1] + T[i][2] * (off[2] || 0),
         ];
-        return { p: q, c: r.c || opts.color };
+        return { p: q, c: r.c || opts.color, n: r.n };
       },
       { wrap: true, pole0: opts.pole0, pole1: opts.pole1, flip: opts.flip, color: opts.color },
     );
@@ -352,7 +371,8 @@ export class Mesh {
     for (let v = v0; v < v1; v++) {
       const p = [-this.P.a[v * 3], this.P.a[v * 3 + 1], this.P.a[v * 3 + 2]];
       const c = [this.C.a[v * 3], this.C.a[v * 3 + 1], this.C.a[v * 3 + 2]];
-      this.vert(p, c);
+      const n = this.Nb ? [-this.Nb.a[v * 3], this.Nb.a[v * 3 + 1], this.Nb.a[v * 3 + 2]] : null;
+      this.vert(p, c, n);
     }
     for (let k = i0; k < i1; k += 3) {
       const a = this.I.a[k] + off, b = this.I.a[k + 1] + off, c = this.I.a[k + 2] + off;
@@ -370,6 +390,16 @@ export class Mesh {
   }
 
   computeNormals() {
+    if (this.Nb) {
+      const Nn = this.Nb.n === this.Nb.a.length ? this.Nb.a : this.Nb.a.slice(0, this.Nb.n);
+      for (let k = 0; k < Nn.length; k += 3) {
+        const l = Math.hypot(Nn[k], Nn[k + 1], Nn[k + 2]) || 1;
+        Nn[k] /= l; Nn[k + 1] /= l; Nn[k + 2] /= l;
+      }
+      this.Nb = null;
+      this.normals = Nn;
+      return Nn;
+    }
     const P = this.P.view(), I = this.I.view();
     const Nn = new Float32Array(P.length);
     for (let k = 0; k < I.length; k += 3) {
@@ -389,16 +419,21 @@ export class Mesh {
     return Nn;
   }
 
-  // 导出为紧凑的类型化数组
+  // 导出为紧凑的类型化数组。缓冲区只在明显过大时才复制，并立即释放构建用的缓冲，
+  // 2000 万面档位下能省下数百 MB 的峰值内存。
   finish() {
     if (!this.normals) this.computeNormals();
-    return {
+    const tight = (b) => (b.a.length <= b.n * 1.15 ? b.a.subarray(0, b.n) : b.a.slice(0, b.n));
+    const out = {
       name: this.name,
-      positions: this.P.view().slice(),
+      positions: tight(this.P),
       normals: this.normals,
-      colors: this.C.view().slice(),
-      indices: this.I.view().slice(),
+      colors: tight(this.C),
+      indices: tight(this.I),
     };
+    this.P = this.C = this.I = null;
+    this.normals = null;
+    return out;
   }
 }
 
@@ -439,8 +474,8 @@ export class Model {
   constructor() {
     this.meshes = new Map();
   }
-  mesh(name) {
-    if (!this.meshes.has(name)) this.meshes.set(name, new Mesh(name));
+  mesh(name, opts) {
+    if (!this.meshes.has(name)) this.meshes.set(name, new Mesh(name, opts));
     return this.meshes.get(name);
   }
 }

@@ -1,13 +1,13 @@
 // 头部网格与五官：眼睛（巩膜、虹膜、瞳孔、高光都在一张高密度网格的顶点色里）、
 // 眼线与睫毛、双眼皮褶、眉毛、嘴、腮红。五官都以「贴花」方式投影到脸部曲面上。
-import { rgb, mixc, lerp, clamp, smoothstep, gauss, TAU, PI, noise3 } from './core.js';
+import { rgb, mixc, lerp, clamp, smoothstep, gauss, TAU, PI, noise3, RES } from './core.js';
 import { headPoint, faceProject, headToWorld, hairMask, HEAD } from './head.js';
 
-export const SKIN = rgb('#ffe9df');
+export const SKIN = rgb('#fdece5');
 const SKIN_SHADE = rgb('#f6c9bd');
 const BLUSH = rgb('#ff9e9e');
 const LIP = rgb('#f29a95');
-export const HAIR_DARK = rgb('#24253a');
+export const HAIR_DARK = rgb('#1c1c22');
 
 // 眼睛轮廓（局部坐标，+x 一侧；另一侧取镜像）
 const EYE = {
@@ -50,8 +50,8 @@ export function buildHead(model) {
   const skin = model.mesh('skin');
   // 头部主体：u 自下巴尖到头顶，φ 一周
   skin.grid(
-    300,
-    640,
+    RES(300),
+    RES(640),
     (u, v) => {
       const p = headPoint(u, v * TAU);
       return { p: headToWorld(p), c: skinColor(p) };
@@ -65,8 +65,8 @@ export function buildHead(model) {
 // 面部贴花网格：map(s, t) -> {x, y, off, c}，s、t ∈ [0,1]
 function decal(mesh, ns, nt, map, flip) {
   mesh.grid(
-    ns,
-    nt,
+    RES(ns),
+    RES(nt),
     (s, t) => {
       const d = map(s, t);
       return { p: headToWorld(faceProject(d.x, d.y, d.off)), c: d.c };
@@ -101,12 +101,12 @@ function strip(mesh, ns, nt, center, width, off, color, side = 1) {
 const SCLERA = rgb('#fbf8f5');
 const SCLERA_SH = rgb('#c4c3d4');
 const IRIS = {
-  rim: rgb('#1b0e0c'),
-  top: rgb('#2c1511'),
-  mid: rgb('#5b2a1d'),
-  low: rgb('#a65a35'),
-  glow: rgb('#dc9c62'),
-  pupil: rgb('#0f0707'),
+  rim: rgb('#140e0e'),
+  top: rgb('#1d1515'),
+  mid: rgb('#3a2b28'),
+  low: rgb('#6e5a52'),
+  glow: rgb('#a8928a'),
+  pupil: rgb('#0c0808'),
 };
 const WHITE = rgb('#ffffff');
 

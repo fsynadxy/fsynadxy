@@ -190,10 +190,21 @@ Claude-Session: https://claude.ai/code/session_01NcQToAoZWkBMawNc4Cis28
     新会话需先 `action: "read"` 该 URL，再带 `url` 发布，`icon` 不再传。
 - 当前面数 3,804,322（发束 131 万、制服 98 万、皮肤 57 万、细发丝 43 万……），导出 GLB 约 110 MB。
 
-用户最新反馈（待做）：
+用户最新反馈（**已完成**，见下方「11.2」；以下保留原始记录）：
 1. 「太胖了 / 身子太宽」：收窄肩宽（`torso.js` KEYS 与 `body.js` ARM）、胸腰与上衣松量、裙摆张开度（`clothes.js` SKIRT）、手臂与袖子粗细；
    改躯干后要同步检查：裙子在上衣下摆以上必须在上衣内（留 4–8mm），手不能插进裙子，衣领轮廓点（OUTER/INNER）贴合。
 2. 面数要求改为 **2000 万**：计划把模型做成可按档位生成（例如 `buildFigure({ detail })`），
    满档 ≥ 2000 万（主要加在头发：更多更细的发丝；其次脸、衣服细分），导出脚本检查 ≥ 2000 万；
    查看器默认流畅档，另设「2000 万」档按需切换（满档浏览器生成约十几秒、内存约 1 GB、GLB 约 600 MB，手机可能带不动）。
 3. 用户正在用提示词生成参考图（三视图、面部特写、背面），收到后按图调整比例、发型、裙长等。
+
+### 11.2 按参考图修改与 2000 万面（已完成）
+
+- 用户给了两张参考图（面部特写 + 三视图）：纤细身形、窄肩、双腿并拢、短款上衣（下摆约 0.955 m）、膝上 A 字百褶裙（下摆 0.615 m）、
+  袖口上方蓬起再收进藏青袖口、更深的 V 领（V 点 1.17 m）、胸当上沿两道白线、领缘下露出的红色领巾、及腰黑长直（后发到约 0.82 m）、灰棕色眼睛。
+  相关常数：`torso.js` KEYS/NECK、`body.js` ARM/LEG/腿半径、`clothes.js` OUTER/INNER/SKIRT/袖子 R、`hair.js` yStop 与 hangBias。
+- 精度档位在 `core.js` 的 `DETAIL/setDetail/RES`：ultra 把网格分段 ×1.6、发束段数与边数加密，并由 `buildHairStrands` 在每束表面铺细发丝
+  （`strandsPerLock`，当前 34）。细发丝网格用显式法线（`explicitNormals`）。当前 ultra 22,030,921 面、standard 4,261,038 面。
+- 查看器「精度」按钮会释放旧模型并重建；`?detail=ultra` 直接以 2000 万档打开。细发丝不投影。
+- `npm run figure:export` 默认导出 ultra（约 635 MB）并检查 ≥ 2000 万；`-- --detail standard` 导出标准档。
+- 写文件的 Python 脚本一律先写临时文件再 `os.replace`（曾因脚本报错把 hair.js 截成空文件，已从 git 恢复）。

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Model } from './model/core.js';
-import { buildSteps, finishModel, MATERIALS, STEPS } from './model/index.js';
+import { buildSteps, finishModel, MATERIALS, STEPS, LEVELS } from './model/index.js';
 import { exportGLB } from './model/gltf.js';
 
 const params = new URLSearchParams(location.search);
@@ -139,8 +139,8 @@ const TOON = {
   skin: { shade: '#f2b9ad', rim: 0.16, rimColor: '#fff3ec', outline: ['#8a5048', 0.75, 1.5], th: -0.3 },
   cloth: { shade: '#bfc4e6', rim: 0.12, rimColor: '#ffffff', outline: ['#262c4c', 0.55, 1.6] },
   ribbon: { shade: '#c5798f', rim: 0.18, rimColor: '#ffd6dc', outline: ['#5c0f22', 0.6, 1.4] },
-  hair: { shade: '#6b6f9c', rim: 0.32, rimColor: '#a9b5ea', outline: ['#0d0d17', 0.8, 1.2] },
-  hairfine: { shade: '#6b6f9c', rim: 0.3, rimColor: '#a9b5ea' },
+  hair: { shade: '#5d5d6c', rim: 0.3, rimColor: '#b9bccb', outline: ['#0b0b10', 0.8, 1.2] },
+  hairfine: { shade: '#5d5d6c', rim: 0.28, rimColor: '#b9bccb' },
   tights: { shade: '#8a87a2', rim: 0.35, rimColor: '#9aa2cc', outline: ['#0c0c12', 0.85, 1.4] },
   leather: { shade: '#9c6e6a', rim: 0.25, rimColor: '#ffd8c0', outline: ['#21110b', 0.7, 1.4] },
 };
@@ -240,6 +240,9 @@ scene.add(group);
 const meshes = [];
 const outlines = [];
 let stats = null;
+let detail = params.get('detail') === 'ultra' ? 'ultra' : 'standard';
+let currentOut = null;
+let building = false;
 let style = params.get('style') === 'pbr' ? 'pbr' : 'toon';
 let showOutline = true;
 let wire = false;
@@ -275,9 +278,28 @@ function applyStyle() {
   document.querySelectorAll('[data-style]').forEach((b) => b.classList.toggle('on', b.dataset.style === style));
 }
 
+// 释放当前模型（切换精度时重建）
+function clearModel() {
+  for (const m of meshes) {
+    m.geometry.dispose();
+    m.userData.pbr.dispose();
+    m.userData.toon.dispose();
+    group.remove(m);
+  }
+  for (const o of outlines) {
+    o.material.dispose();
+    group.remove(o);
+  }
+  meshes.length = 0;
+  outlines.length = 0;
+  outlineMats.length = 0;
+  currentOut = null;
+}
+
 async function build() {
   const model = new Model();
-  const it = buildSteps(model);
+  const it = buildSteps(model, { detail });
+  const total = STEPS.length - (detail === 'ultra' ? 0 : 4);
   const t0 = performance.now();
   const bar = $('#progress');
   const label = $('#progress-label');
@@ -286,7 +308,7 @@ async function build() {
     const r = it.next();
     if (r.done) break;
     if (label) label.textContent = r.value + '…';
-    if (bar) bar.style.width = `${Math.min(96, (++i / STEPS.length) * 100)}%`;
+    if (bar) bar.style.width = `${Math.min(96, (++i / total) * 100)}%`;
     await new Promise((res) => setTimeout(res, 0));
   }
   const out = finishModel(model);
@@ -303,7 +325,8 @@ async function build() {
     mesh.name = p.name;
     mesh.userData.pbr = pbrMaterial(p.name);
     mesh.userData.toon = toonMaterial(p.name);
-    mesh.castShadow = p.name !== 'eye' && p.name !== 'lash';
+    // 细发丝数量巨大，不参与投影（对画面几乎没有影响，却能省下一整遍几何）
+    mesh.castShadow = p.name !== 'eye' && p.name !== 'lash' && p.name !== 'hairfine';
     // 发丝在脸上的投影在阴影贴图分辨率下会成为脏污的条纹，皮肤不接收阴影
     mesh.receiveShadow = p.name !== 'skin' && p.name !== 'eye' && p.name !== 'lash';
     group.add(mesh);
@@ -317,7 +340,8 @@ async function build() {
     }
   }
   updateOutlineWidth();
-  stats = { triangles: out.triangles, vertices: out.vertices, parts: out.parts.length, ms };
+  stats = { triangles: out.triangles, vertices: out.vertices, parts: out.parts.length, ms, detail };
+  currentOut = out;
   window.__figure = { stats, parts: out.parts.map((p) => ({ name: p.name, triangles: p.indices.length / 3 })) };
   return out;
 }
@@ -348,7 +372,7 @@ function showStats(out) {
   }
   const meta = $('#meta');
   if (meta) {
-    meta.innerHTML = `${fmt(stats.vertices)} 顶点 · ${stats.parts} 种材质 · 生成用时 ${(stats.ms / 1000).toFixed(1)} 秒<br>身高 ${(top * 100).toFixed(1)} cm（含发顶） · 约 ${(top / HEAD_HEIGHT).toFixed(1)} 头身`;
+    meta.innerHTML = `${LEVELS[stats.detail].label}精度 · ${fmt(stats.vertices)} 顶点 · ${stats.parts} 种材质 · 生成用时 ${(stats.ms / 1000).toFixed(1)} 秒<br>身高 ${(top * 100).toFixed(1)} cm（含发顶） · 约 ${(top / HEAD_HEIGHT).toFixed(1)} 头身`;
   }
   const table = $('#parts-table');
   if (table) {
@@ -361,7 +385,38 @@ function showStats(out) {
 }
 
 let autoRotate = false;
-function bindUI(out) {
+// 切换精度：显示加载层，释放旧模型，按新档位重新生成
+async function setDetailLevel(next) {
+  if (building || next === detail) return;
+  building = true;
+  detail = next;
+  document.querySelectorAll('[data-detail]').forEach((b) => b.classList.toggle('on', b.dataset.detail === detail));
+  document.body.classList.remove('ready');
+  const label = $('#progress-label');
+  const bar = $('#progress');
+  if (bar) bar.style.width = '0%';
+  if (label) label.textContent = detail === 'ultra' ? '准备生成 2000 万面（需要十几秒，约占 1.5 GB 内存）…' : '准备中…';
+  await new Promise((r) => setTimeout(r, 60));
+  clearModel();
+  try {
+    const out = await build();
+    applyStyle();
+    showStats(out);
+  } catch (e) {
+    console.error(e);
+    if (label) label.textContent = '生成失败：' + (e && e.message ? e.message : e);
+    building = false;
+    return;
+  }
+  document.body.classList.add('ready');
+  building = false;
+}
+
+function bindUI() {
+  document.querySelectorAll('[data-detail]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.detail === detail);
+    b.addEventListener('click', () => setDetailLevel(b.dataset.detail));
+  });
   document.querySelectorAll('[data-view]').forEach((b) =>
     b.addEventListener('click', () => {
       setView(b.dataset.view);
@@ -401,7 +456,7 @@ function bindUI(out) {
     exp.textContent = '正在打包…';
     setTimeout(() => {
       try {
-        const bytes = exportGLB(out.parts, MATERIALS);
+        const bytes = exportGLB(currentOut.parts, MATERIALS);
         const url = URL.createObjectURL(new Blob([bytes], { type: 'model/gltf-binary' }));
         const a = document.createElement('a');
         a.href = url;
@@ -439,11 +494,12 @@ async function main() {
   showStats(out);
   setView(params.get('view') || 'full');
   document.body.classList.add('ready');
-  bindUI(out);
+  bindUI();
   if (SHOT) {
     window.__shot = (view, opts = {}) => {
       if (typeof view === 'string') setView(view);
       else if (view) {
+        userMoved = true;
         camera.position.set(...view.pos);
         controls.target.set(...view.target);
         controls.update();

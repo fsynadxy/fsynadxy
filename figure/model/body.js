@@ -1,23 +1,23 @@
 // 身体的皮肤部分与鞋袜：脖子、双手、穿黑色裤袜的双腿、乐福鞋。
 import {
   rgb, mixc, lerp, clamp, smoothstep, gauss, TAU, PI, add, sub, mul, madd, norm, cross, dot, len,
-  spline3, resample, transportFrames, rotAxis, Curve, fbm3,
+  spline3, resample, transportFrames, rotAxis, Curve, fbm3, RES,
 } from './core.js';
 import { NECK } from './torso.js';
 import { SKIN } from './face.js';
 
 // ---------- 骨架关键点（左侧 = +x，另一侧镜像） ----------
 export const ARM = {
-  shoulder: [0.143, 1.268, -0.012],
-  upper: [0.161, 1.24, -0.012],
-  elbow: [0.206, 1.008, -0.032],
-  wrist: [0.229, 0.816, 0.004],
+  shoulder: [0.098, 1.252, -0.008],
+  upper: [0.112, 1.225, -0.008],
+  elbow: [0.151, 1.0, -0.022],
+  wrist: [0.19, 0.775, 0.006],
 };
 export const LEG = {
-  hip: [0.08, 0.86, -0.006],
-  knee: [0.087, 0.458, 0.012],
-  ankle: [0.083, 0.088, -0.022],
-  heel: [0.083, 0.0, -0.068],
+  hip: [0.056, 0.86, -0.004],
+  knee: [0.052, 0.46, 0.01],
+  ankle: [0.05, 0.088, -0.02],
+  heel: [0.05, 0.0, -0.064],
 };
 
 const SKIN_PALM = rgb('#ffdcd0');
@@ -30,13 +30,14 @@ const SKIN_SHADOW = rgb('#f3c3b8');
 export function buildNeck(model) {
   const skin = model.mesh('skin');
   const pts = [];
-  for (let i = 0; i <= 40; i++) {
-    const t = i / 40;
+  const NN = RES(40);
+  for (let i = 0; i <= NN; i++) {
+    const t = i / NN;
     pts.push([NECK.x, lerp(NECK.y0, NECK.y1, t), lerp(NECK.z0, NECK.z1, t)]);
   }
   skin.tube(
     pts,
-    160,
+    RES(160),
     (t, a) => {
       // 下粗上细，胸锁乳突肌在前侧略微隆起
       const sc = 1 + 0.1 * smoothstep(0.35, 0, t);
@@ -91,10 +92,11 @@ function buildHand(model) {
   const F = handFrame();
   // 手腕到掌根：一段椭圆管，伸进袖口里，末端与手掌截面吻合
   const wristPts = [];
-  for (let i = 0; i <= 24; i++) wristPts.push(hp(F, lerp(-0.05, -0.004, i / 24), 0, 0.0));
+  const NW = RES(24);
+  for (let i = 0; i <= NW; i++) wristPts.push(hp(F, lerp(-0.05, -0.004, i / NW), 0, 0.0));
   skin.tube(
     wristPts,
-    72,
+    RES(72),
     (t, a) => {
       const w = lerp(0.0205, 0.0226, smoothstep(0.4, 1, t)), th = lerp(0.0166, 0.0156, t);
       const n = lerp(2, 3, smoothstep(0.5, 1, t));
@@ -106,8 +108,8 @@ function buildHand(model) {
   // 手掌：从掌根到指根的放样，截面是圆角矩形，掌心微凹，指根处圆润收口
   const palmL0 = -0.014, palmL1 = 0.094;
   skin.grid(
-    100,
-    120,
+    RES(100),
+    RES(120),
     (u, v) => {
       const L = lerp(palmL0, palmL1, u);
       const ang = v * TAU;
@@ -155,13 +157,13 @@ function buildHand(model) {
 }
 
 function fingerTube(skin, F, path, r0, length, thumb = false) {
-  const n = 70;
+  const n = RES(70);
   const pts = [];
   for (let i = 0; i <= n; i++) pts.push(path(i / n));
   const fr = transportFrames(pts, mul(F.p, -1));
   skin.tube(
     pts,
-    40,
+    RES(40),
     (t, a, i) => {
       // 半径：根部粗、指尖收圆；关节处略鼓
       let r = lerp(r0, r0 * 0.78, t);
@@ -189,39 +191,42 @@ export function buildHands(model) {
   const skin = model.mesh('skin');
   const m = skin.mark();
   buildHand(model);
+  // 二次元的手小巧一些：以手腕为中心整体缩小
+  const w = ARM.wrist, k = 0.9;
+  skin.transformFrom(m, (p) => [w[0] + (p[0] - w[0]) * k, w[1] + (p[1] - w[1]) * k, w[2] + (p[2] - w[2]) * k]);
   skin.mirrorFrom(m);
 }
 
 // ---------- 腿（黑色裤袜） ----------
 const TIGHTS = rgb('#2c2b36');
-const TIGHTS_KNEE = rgb('#4a3d42');
+const TIGHTS_KNEE = rgb('#37323c');
 
 export function buildLegs(model) {
   const mesh = model.mesh('tights');
   const m = mesh.mark();
-  const path = spline3([LEG.hip, [0.086, 0.67, -0.0], LEG.knee, [0.086, 0.27, -0.004], LEG.ankle, [0.083, 0.045, -0.03]]);
+  const path = spline3([LEG.hip, [0.055, 0.67, 0.0], LEG.knee, [0.052, 0.27, -0.004], LEG.ankle, [0.05, 0.045, -0.028]]);
   const pts = [];
-  const n = 260;
+  const n = RES(260);
   for (let i = 0; i <= n; i++) pts.push(path(i / n));
-  // 半径关键帧：y -> [左右半径, 前后半径, 小腿后侧隆起, 膝盖前凸]
+  // 半径关键帧：y -> [左右半径, 前后半径, 小腿后侧隆起, 膝盖前凸]（参考图里腿很细）
   const R = new Curve([
-    [0.03, [0.03, 0.05, 0, 0]],
-    [0.088, [0.026, 0.029, 0, 0]],
-    [0.13, [0.029, 0.031, 0.002, 0]],
-    [0.2, [0.036, 0.037, 0.006, 0]],
-    [0.3, [0.045, 0.044, 0.011, 0]],
-    [0.38, [0.045, 0.045, 0.006, 0]],
-    [0.43, [0.044, 0.045, 0.0, 0.003]],
-    [0.46, [0.045, 0.046, 0, 0.006]],
-    [0.5, [0.048, 0.049, 0, 0.002]],
-    [0.6, [0.054, 0.056, 0, 0]],
-    [0.72, [0.06, 0.062, 0, 0]],
-    [0.88, [0.062, 0.064, 0, 0]],
+    [0.03, [0.027, 0.045, 0, 0]],
+    [0.088, [0.021, 0.025, 0, 0]],
+    [0.13, [0.024, 0.027, 0.0015, 0]],
+    [0.2, [0.03, 0.031, 0.004, 0]],
+    [0.3, [0.036, 0.036, 0.008, 0]],
+    [0.38, [0.036, 0.037, 0.004, 0]],
+    [0.43, [0.035, 0.037, 0.0, 0.002]],
+    [0.46, [0.036, 0.038, 0, 0.004]],
+    [0.5, [0.038, 0.04, 0, 0.0015]],
+    [0.6, [0.044, 0.046, 0, 0]],
+    [0.72, [0.05, 0.052, 0, 0]],
+    [0.88, [0.054, 0.056, 0, 0]],
   ]);
   const fr = transportFrames(pts, [1, 0, 0]);
   mesh.tube(
     pts,
-    150,
+    RES(150),
     (t, a, i) => {
       const y = pts[i][1];
       const [rx, rz, calf, knee] = R.at(y);
@@ -255,8 +260,9 @@ export function buildShoes(model) {
   const fwd = [Math.sin(toeOut), 0, Math.cos(toeOut)];
   const side = [Math.cos(toeOut), 0, -Math.sin(toeOut)];
   const heel = [LEG.heel[0] - 0.002, 0, LEG.heel[2] - 0.004];
-  const FL = 0.236; // 鞋长
-  const P = (a, b, y) => [heel[0] + fwd[0] * a * FL + side[0] * b, y, heel[2] + fwd[2] * a * FL + side[2] * b];
+  const FL = 0.226; // 鞋长
+  const BW = 0.88; // 鞋宽比例（二次元的脚小巧些）
+  const P = (a, b, y) => [heel[0] + fwd[0] * a * FL + side[0] * b * BW, y, heel[2] + fwd[2] * a * FL + side[2] * b * BW];
   // 鞋面放样：a 从后跟到鞋尖；截面在 (b, y) 平面
   const W = new Curve([
     [0, [0.022, 0.0]],
@@ -282,8 +288,8 @@ export function buildShoes(model) {
   ]);
   const soleTop = (a) => 0.012 + 0.016 * smoothstep(0.32, 0.26, a) + 0.006 * smoothstep(0.86, 1.0, a);
   mesh.grid(
-    170,
-    120,
+    RES(170),
+    RES(120),
     (u, v) => {
       const a = u;
       const [w, bOff] = W.at(a);
@@ -322,8 +328,8 @@ export function buildShoes(model) {
   );
   // 鞋底：比鞋面略宽的圆角薄板，后跟加厚
   mesh.grid(
-    150,
-    48,
+    RES(150),
+    RES(48),
     (u, v) => {
       const a = lerp(-0.01, 1.005, u);
       const [w0, bOff] = W.at(clamp(a, 0, 1));

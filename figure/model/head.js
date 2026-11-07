@@ -32,7 +32,8 @@ const KEYS = new Curve([
 const _k = new Array(8);
 export function slice(u) {
   KEYS.at(u, _k);
-  return { y: _k[0], W: Math.max(0, _k[1]), zF: _k[2], zB: _k[3], nF: _k[4], nB: _k[5], V: _k[6], k: _k[7] };
+  // 下半张脸略收窄（参考图里是更尖的瓜子脸）
+  return { y: _k[0], W: Math.max(0, _k[1]) * (1 - 0.045 * smoothstep(0.62, 0.25, u)), zF: _k[2], zB: _k[3], nF: _k[4], nB: _k[5], V: _k[6], k: _k[7] };
 }
 
 // 未加位移的基础曲面点
