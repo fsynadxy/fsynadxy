@@ -184,7 +184,7 @@ Claude-Session: https://claude.ai/code/session_01NcQToAoZWkBMawNc4Cis28
 ### 11.1 人物子项目的当前状态与待办（最新）
 
 - 已推送分支：`claude/optimistic-thompson-k7irvn`（本子项目在这个分支上开发；未开 PR）
-- 在线查看页（Artifact，私有）：https://claude.ai/artifact/DDNhQ15YBPdoDBz36qcG93 （Version 1，无导出按钮）
+- 在线查看页（Artifact，私有）：https://claude.ai/artifact/DDNhQ15YBPdoDBz36qcG93 （Version 2，无导出按钮；含「标准 / 2000万」切换）
   - 更新方法：`npm run figure:build`，把 `dist-figure/assets/index-*.js/.css` 复制为 `assets/figure.js`、`assets/figure.css`，
     页面片段取 `figure/index.html` 的 body（去掉导出按钮，脚本改为 `assets/figure.js`）并加上 `<title>` 与字体、CSS 链接；
     新会话需先 `action: "read"` 该 URL，再带 `url` 发布，`icon` 不再传。
