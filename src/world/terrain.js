@@ -140,7 +140,14 @@ export class Terrain {
     if (!cell) return h;
     const edge = Math.min(x - F.x0, F.x1 - x, z - F.z0, F.z1 - z);
     const w = smoothstep(-4, 2, edge);
-    return lerp(h, cell.level, w);
+    // 田界上的顶点取两侧较低的田底：2 m 网格不会把高处田块的泥摊进低处田块的水面里
+    let lvl = cell.level;
+    for (const dx of [-0.8, 0.8])
+      for (const dz of [-0.8, 0.8]) {
+        const o = this.paddyCell(x + dx, z + dz);
+        if (o && o.level < lvl) lvl = o.level - 0.05;
+      }
+    return lerp(h, lvl, w);
   }
   paddyCell(x, z) {
     const F = FIELDS.paddies;

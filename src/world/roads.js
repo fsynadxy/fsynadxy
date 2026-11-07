@@ -230,23 +230,29 @@ export function lanternGeometry(b, x, y, z, color, scale = 1) {
 }
 
 // 水田田埂
-export function buildDikes(chunks, terrain) {
+// 田埂：每条田埂按两侧田块中较高的水位定顶面，向下包住到较低田块的田底以下，台阶处不再镂空；
+// 顶面是可以走的草皮，侧面是泥土
+export function buildDikes(chunks, terrain, colliders) {
   const F = FIELDS.paddies;
-  const seen = new Set();
-  for (let x = F.x0 + 1; x < F.x1; x += F.cell[0])
-    for (let z = F.z0 + 1; z < F.z1; z += F.cell[1]) {
-      const c = terrain.paddyCell(x + 2, z + 2);
-      const key = c.ix + ',' + c.iz;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const b = chunks.at((c.x0 + c.x1) / 2, (c.z0 + c.z1) / 2);
-      b.pattern(PAT.NONE, 0);
-      const col = '#7f9a52';
-      const y = c.level - 0.1;
+  const nx = Math.ceil((F.x1 - F.x0) / F.cell[0]), nz = Math.ceil((F.z1 - F.z0) / F.cell[1]);
+  const cellAt = (ix, iz) => (ix < 0 || iz < 0 || ix >= nx || iz >= nz ? null : terrain.paddyCell(F.x0 + (ix + 0.5) * F.cell[0], F.z0 + (iz + 0.5) * F.cell[1]));
+  const rng = new RNG(17);
+  const dike = (cx, cz, w, d, a, b) => {
+    const hi = Math.max(a.level, b ? b.level : a.level), lo = Math.min(a.level, b ? b.level : a.level);
+    const y0 = lo - (b ? 0.25 : 0.7), y1 = hi + 0.3;
+    const bld = chunks.at(cx, cz);
+    bld.pattern(PAT.NONE, 0);
+    bld.box(cx, y0, cz, w, y1 - y0, d, vary('#6f5e46', rng, 0.05), { topColor: vary('#7f9c50', rng, 0.06) });
+    if (colliders) colliders.addSurface(cx, cz, w / 2, d / 2, 0, () => y1, 'grass');
+  };
+  for (let ix = 0; ix < nx; ix++)
+    for (let iz = 0; iz < nz; iz++) {
+      const c = cellAt(ix, iz);
       const w = c.x1 - c.x0, d = c.z1 - c.z0;
-      b.box((c.x0 + c.x1) / 2, y, c.z0, w, 0.42, 0.7, col, { topColor: '#8aa65a' });
-      b.box(c.x0, y, (c.z0 + c.z1) / 2, 0.7, 0.42, d, col, { topColor: '#8aa65a' });
-      if (c.ix === Math.ceil((F.x1 - F.x0) / F.cell[0]) - 1) b.box(c.x1, y, (c.z0 + c.z1) / 2, 0.7, 0.42, d, col);
-      if (c.iz === Math.ceil((F.z1 - F.z0) / F.cell[1]) - 1) b.box((c.x0 + c.x1) / 2, y, c.z1, w, 0.42, 0.7, col);
+      // 沿 z 的田埂（西边）占住交叉处；沿 x 的田埂只在两个交叉之间，避免顶面重叠闪烁
+      dike(c.x0, (c.z0 + c.z1) / 2, 0.7, d + 0.7, c, cellAt(ix - 1, iz));
+      dike((c.x0 + c.x1) / 2, c.z0, w - 0.7, 0.7, c, cellAt(ix, iz - 1));
+      if (ix === nx - 1) dike(c.x1, (c.z0 + c.z1) / 2, 0.7, d + 0.7, c, null);
+      if (iz === nz - 1) dike((c.x0 + c.x1) / 2, c.z1, w - 0.7, 0.7, c, null);
     }
 }

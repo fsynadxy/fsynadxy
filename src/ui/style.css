@@ -77,6 +77,9 @@ kbd {
 /* ---------- 标题 ---------- */
 #title { position: absolute; inset: 0; z-index: 30; background: linear-gradient(90deg, rgba(251, 246, 240, 0) 45%, rgba(251, 246, 240, 0.25) 75%, rgba(251, 246, 240, 0.55)); transition: opacity 1s ease; }
 #title.fade { opacity: 0; pointer-events: none; }
+/* 标题页上打开操作说明或设置时：标题与菜单退到面板后面、变淡，也不再截走点按 */
+#title.under { pointer-events: none; }
+#title.under .tt-vertical, #title.under .tt-menu, #title.under .tt-foot { opacity: 0.18; transition: opacity 0.3s ease; }
 .tt-vertical { position: absolute; right: clamp(24px, 8vw, 120px); top: 50%; transform: translateY(-58%); writing-mode: vertical-rl; display: flex; gap: 18px; align-items: flex-start; }
 .tt-vertical h1, .tt-vertical p { white-space: nowrap; }
 .tt-vertical h1 { margin: 0; font-family: var(--jp); font-weight: 700; font-size: clamp(56px, 11vh, 108px); letter-spacing: 0.22em; color: #2a2320; text-shadow: 0 2px 30px rgba(255, 255, 255, 0.85); }
@@ -174,7 +177,7 @@ kbd {
 @keyframes bob { 50% { transform: translateY(3px); } }
 
 /* ---------- 面板 ---------- */
-.panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(880px, 94vw); max-height: min(88vh, 760px); display: flex; flex-direction: column; z-index: 20; animation: panelIn 0.35s ease both; }
+.panel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(880px, 94vw); max-height: min(88vh, 760px); display: flex; flex-direction: column; z-index: 34; animation: panelIn 0.35s ease both; }
 @keyframes panelIn { from { opacity: 0; transform: translate(-50%, -48%); } to { opacity: 1; transform: translate(-50%, -50%); } }
 .panel-head { display: flex; align-items: center; gap: 14px; padding: 16px 22px 12px; border-bottom: 1px solid var(--line); }
 .panel-head h3 { margin: 0; font-family: var(--jp); font-size: 20px; letter-spacing: 0.3em; }

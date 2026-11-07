@@ -466,7 +466,7 @@ export class World {
       ctx.lights.push([l.x, l.y, l.z, 1]);
     }
     this.lanterns = lanterns;
-    buildDikes(ctx.chunks, T);
+    buildDikes(ctx.chunks, T, this.colliders);
     // 电线杆
     const { wires, lamps } = placeUtilityPoles(ctx);
     this.poleWires = wires;

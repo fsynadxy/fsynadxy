@@ -310,6 +310,7 @@ export class UI {
     if (name === 'book') this.renderBook(arg || 'stamps');
     if (name === 'map') this.game.drawFullMap($('canvas', this.el.map));
     if (name === 'menu') this.renderMenu(arg || 'settings');
+    this.el.title.classList.add('under');
     this.game.onPanel(true);
   }
   closePanel(silent) {
@@ -317,8 +318,14 @@ export class UI {
     const el = this.el[this.open === 'map' ? 'map' : this.open];
     el.classList.add('hidden');
     this.open = null;
+    this.el.title.classList.remove('under');
     if (!silent) this.audio.ui('close');
     this.game.onPanel(false);
+    // 回到标题页时把焦点还给菜单
+    if (this.game.mode === 'title' && !this.el.title.classList.contains('hidden')) {
+      const first = $('[data-act="continue"]:not(.hidden)', this.el.title) || $('[data-act="start"]', this.el.title);
+      if (first && !this.game.input.isTouch) first.focus({ preventScroll: true });
+    }
   }
   renderBook(tab) {
     const b = this.el.book;

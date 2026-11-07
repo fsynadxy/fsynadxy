@@ -280,8 +280,14 @@ export class Game {
     this.audio.ui('wood');
     if (url) setTimeout(() => this.ui.showPhoto(url), 400);
   }
+  // 地图上的朝向：第一人称取视线（转头即时反映），第三人称取角色朝向；视线扇形总是镜头方向
+  mapHeading() {
+    const look = this.rig.yaw + Math.PI;
+    return { heading: this.rig.firstPerson ? look : this.player.yaw, look };
+  }
   drawFullMap(cv) {
-    this.mapArt.drawFull(cv, this.player, this.markers());
+    const { heading, look } = this.mapHeading();
+    this.mapArt.drawFull(cv, this.player, this.markers(), heading, look);
   }
   markers() {
     return this.world.ctx.stamps.map((s) => ({ kind: 'stamp', x: s.x, z: s.z, done: !!this.state.stamps[s.id] }));
@@ -799,11 +805,15 @@ export class Game {
     this.ui.updateClock(this.daynight);
     this.ui.updateHints();
     const p = this.player.pos;
-    this.mapArt.drawMini(this.miniCanvas, p.x, p.z, this.rig.yaw, this.player.yaw, this.markers());
-    // 北方标记随地图旋转
+    const mh = this.mapHeading();
+    this.mapArt.drawMini(this.miniCanvas, p.x, p.z, mh.heading, mh.look, this.markers());
+    // 小地图北朝上：「北」固定在上方
     if (!this.northEl) this.northEl = this.root.querySelector('.hud-map .n');
     const R = this.miniCanvas.clientWidth / 2 - 10;
-    this.northEl.style.transform = `translate(${Math.sin(this.rig.yaw) * R}px, ${-Math.cos(this.rig.yaw) * R}px)`;
+    if (this._northR !== R) {
+      this._northR = R;
+      this.northEl.style.transform = `translate(0px, ${-R}px)`;
+    }
     let reg = null, best = Infinity;
     for (const r of REGIONS) {
       const d = Math.hypot(p.x - r.x, p.z - r.z);

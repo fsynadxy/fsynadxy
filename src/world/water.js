@@ -243,7 +243,7 @@ export function createPaddyWater(terrain) {
       if (seen.has(key) || !c.flooded) continue;
       seen.add(key);
       const y = c.level + 0.12;
-      const m = 0.5;
+      const m = 0.15; // 水面边缘伸进田埂底下（田埂半宽 0.35 m）
       const b = pos.length / 3;
       pos.push(c.x0 + m, y, c.z0 + m, c.x1 - m, y, c.z0 + m, c.x1 - m, y, c.z1 - m, c.x0 + m, y, c.z1 - m);
       for (let k = 0; k < 4; k++) {

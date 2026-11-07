@@ -163,8 +163,41 @@ export class MapArt {
       ctx.fillRect(px + 2.5, pz - 7, 2, 12);
     }
   }
-  // HUD 小地图：以玩家为中心，镜头前方朝上
-  drawMini(cv, px, pz, camYaw, playerYaw, markers, scale = 2.2) {
+  // 玩家箭头 + 视线扇形（小地图与大地图共用，北朝上）
+  // heading：角色朝向角（朝向 = (sin, cos)，π 为北）；look：视线方向角（同一约定）
+  playerArrow(ctx, x, y, heading, look, k = 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    // 视线扇形
+    ctx.save();
+    ctx.rotate(-look + Math.PI);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 34 * k);
+    g.addColorStop(0, 'rgba(200,69,46,0.32)');
+    g.addColorStop(1, 'rgba(200,69,46,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, 34 * k, -Math.PI / 2 - 0.62, -Math.PI / 2 + 0.62);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // 箭头
+    ctx.rotate(-heading + Math.PI);
+    ctx.fillStyle = '#c8452e';
+    ctx.strokeStyle = '#fffaf2';
+    ctx.lineWidth = 2 * k;
+    ctx.beginPath();
+    ctx.moveTo(0, -9 * k);
+    ctx.lineTo(6.5 * k, 7 * k);
+    ctx.lineTo(0, 3.5 * k);
+    ctx.lineTo(-6.5 * k, 7 * k);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+    ctx.restore();
+  }
+  // HUD 小地图：以玩家为中心，北朝上（与大地图一致）
+  drawMini(cv, px, pz, heading, look, markers, scale = 2.2) {
     const ctx = cv.getContext('2d');
     const W = cv.width, H = cv.height;
     ctx.save();
@@ -172,16 +205,13 @@ export class MapArt {
     ctx.fillStyle = '#e6e0d3';
     ctx.fillRect(0, 0, W, H);
     ctx.translate(W / 2, H / 2);
-    ctx.rotate(camYaw);
     const [bx, bz] = this.toPx(px, pz);
     ctx.scale(scale, scale);
     ctx.drawImage(this.base, -bx, -bz);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     // 标记
     for (const m of markers) {
-      const dx = (m.x - px) * (this.size / (2 * EXT)) * scale, dz = (m.z - pz) * (this.size / (2 * EXT)) * scale;
-      const c = Math.cos(camYaw), s = Math.sin(camYaw);
-      let rx = dx * c - dz * s, rz = dx * s + dz * c;
+      let rx = (m.x - px) * (this.size / (2 * EXT)) * scale, rz = (m.z - pz) * (this.size / (2 * EXT)) * scale;
       const r = Math.hypot(rx, rz), lim = W / 2 - 9;
       if (r > lim) {
         rx *= lim / r;
@@ -189,23 +219,8 @@ export class MapArt {
       }
       this.marker(ctx, W / 2 + rx, H / 2 + rz, m, r > lim);
     }
-    // 玩家箭头
-    ctx.translate(W / 2, H / 2);
-    ctx.rotate(camYaw - playerYaw + Math.PI);
-    ctx.fillStyle = '#c8452e';
-    ctx.strokeStyle = '#fffaf2';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, -9);
-    ctx.lineTo(6.5, 7);
-    ctx.lineTo(0, 3.5);
-    ctx.lineTo(-6.5, 7);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fill();
+    this.playerArrow(ctx, W / 2, H / 2, heading, look, 1);
     ctx.restore();
-    // 北
-    return { north: camYaw };
   }
   marker(ctx, x, y, m, edge) {
     ctx.save();
@@ -232,7 +247,7 @@ export class MapArt {
     ctx.restore();
   }
   // 大地图
-  drawFull(cv, player, markers) {
+  drawFull(cv, player, markers, heading = player.yaw, look = heading) {
     const ctx = cv.getContext('2d');
     const S = (cv.width = cv.height = 1024);
     ctx.drawImage(this.base, 0, 0);
@@ -268,23 +283,9 @@ export class MapArt {
       this.marker(ctx, 0, 0, m, false);
       ctx.restore();
     }
-    // 玩家
+    // 玩家（与小地图同一个箭头）
     const [px, py] = this.toPx(player.pos.x, player.pos.z);
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(-player.yaw + Math.PI);
-    ctx.fillStyle = '#c8452e';
-    ctx.strokeStyle = '#fffaf2';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(0, -16);
-    ctx.lineTo(11, 12);
-    ctx.lineTo(0, 6);
-    ctx.lineTo(-11, 12);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fill();
-    ctx.restore();
+    this.playerArrow(ctx, px, py, heading, look, 1.7);
     // 方位
     ctx.font = `700 20px ${FONT_SERIF}`;
     ctx.fillStyle = '#c8452e';
