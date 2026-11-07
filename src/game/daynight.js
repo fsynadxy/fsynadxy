@@ -21,8 +21,8 @@ function solarDir(hours, dec = DEC, out = new THREE.Vector3()) {
 
 // 关键帧（sRGB 十六进制，内部转线性）
 const RAW_KEYS = [
-  { e: -20, zenith: '#070c22', horizon: '#18213f', fog: '#18203a', fogSun: '#1d2544', light: '#a9b8e8', lightI: 0.6, hemiSky: '#3a4c86', hemiGround: '#151a2c', hemiI: 1.25, cloudLit: '#2f3a60', cloudShade: '#141a30', glow: '#000000', night: 1.0, fogD: 0.00152, bloom: 0.95, exposure: 1.05 },
-  { e: -8, zenith: '#18265a', horizon: '#565890', fog: '#4f527f', fogSun: '#6e6190', light: '#8c9ad0', lightI: 0.32, hemiSky: '#4d5c98', hemiGround: '#22243a', hemiI: 1.35, cloudLit: '#6c6596', cloudShade: '#2f355c', glow: '#a8607e', night: 0.92, fogD: 0.00152, bloom: 0.85, exposure: 1.05 },
+  { e: -20, zenith: '#070c22', horizon: '#18213f', fog: '#18203a', fogSun: '#1d2544', light: '#a9b8e8', lightI: 0.75, hemiSky: '#3f5290', hemiGround: '#1a1f33', hemiI: 1.6, cloudLit: '#2f3a60', cloudShade: '#141a30', glow: '#000000', night: 1.0, fogD: 0.00152, bloom: 0.95, exposure: 1.12 },
+  { e: -8, zenith: '#18265a', horizon: '#565890', fog: '#4f527f', fogSun: '#6e6190', light: '#8c9ad0', lightI: 0.32, hemiSky: '#52619e', hemiGround: '#25283e', hemiI: 1.55, cloudLit: '#6c6596', cloudShade: '#2f355c', glow: '#a8607e', night: 0.92, fogD: 0.00152, bloom: 0.85, exposure: 1.05 },
   { e: -3, zenith: '#2c3d78', horizon: '#c9796e', fog: '#a77a86', fogSun: '#e48c74', light: '#ff8b55', lightI: 0.08, hemiSky: '#6c76ad', hemiGround: '#3f3236', hemiI: 1.45, cloudLit: '#e8927c', cloudShade: '#5a5180', glow: '#ff8a62', night: 0.7, fogD: 0.00145, bloom: 0.7, exposure: 1.02 },
   { e: 0.5, zenith: '#3c5292', horizon: '#f59a72', fog: '#b897a0', fogSun: '#ffb084', light: '#ff9a5c', lightI: 1.2, hemiSky: '#7f8abd', hemiGround: '#5a4438', hemiI: 1.5, cloudLit: '#ffb48e', cloudShade: '#6d5f86', glow: '#ff9a62', night: 0.38, fogD: 0.00139, bloom: 0.6, exposure: 1.0 },
   { e: 5, zenith: '#5874b4', horizon: '#ffc095', fog: '#d9c6c4', fogSun: '#ffcf9c', light: '#ffb878', lightI: 2.3, hemiSky: '#98a7d2', hemiGround: '#7c6649', hemiI: 1.6, cloudLit: '#ffe0c2', cloudShade: '#988aa8', glow: '#ffb47a', night: 0.08, fogD: 0.00132, bloom: 0.48, exposure: 1.0 },

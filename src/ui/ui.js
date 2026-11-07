@@ -476,9 +476,16 @@ export class UI {
   showPhoto(url) {
     const box = h('div', null);
     box.id = 'photoPreview';
-    box.innerHTML = `<img alt="照片"><div class="btns"><a class="btn" download="sakuragawa.png">保存照片</a><button class="btn ghost">继续拍</button></div>`;
+    // 嵌入在框架里时浏览器会拦截下载链接：改为提示长按/右键保存
+    let embedded = false;
+    try {
+      embedded = window.self !== window.top;
+    } catch (e) {
+      embedded = true;
+    }
+    box.innerHTML = `<img alt="照片"><div class="btns">${embedded ? '' : '<a class="btn" download="sakuragawa.png">保存照片</a>'}<button class="btn ghost">继续拍</button></div><div class="ph-hint">右键或长按图片即可保存</div>`;
     $('img', box).src = url;
-    $('a', box).href = url;
+    if (!embedded) $('a', box).href = url;
     $('button', box).addEventListener('click', () => box.remove());
     box.addEventListener('click', (e) => {
       if (e.target === box) box.remove();

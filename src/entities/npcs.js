@@ -74,6 +74,34 @@ function routes(world) {
   const a = sample(slope, 1, 0, 10);
   const b = sample(temple, 0.35, 0.02, 10).reverse();
   r.yui = [...a, ...b.reverse(), ...b, ...a.slice().reverse()];
+  // 商店街人行道：南侧向东、北侧向西
+  {
+    const main = road('本通り');
+    const pts = [];
+    const L = main.acc[main.acc.length - 1];
+    for (const side of [1, -1]) {
+      const seq = [];
+      for (let s = 0; s < L; s += 6) {
+        const p = pointAt(main.pts, main.acc, s);
+        if (p.x < 26 || p.x > 150) continue;
+        seq.push([p.x + p.tz * 2.3 * side, p.z - p.tx * 2.3 * side]);
+      }
+      pts.push(...(side > 0 ? seq : seq.reverse()));
+    }
+    r.street = pts;
+  }
+  // 东岸步道
+  {
+    const prom = road('東岸步道');
+    const seq = prom.pts.filter((_, i) => i % 6 === 0).slice(4, 60);
+    r.promenade = [...seq, ...seq.slice().reverse()];
+  }
+  // 车站到商店街
+  {
+    const st = road('駅前通り');
+    const seq = sample(st, 0.98, 0.0, 14);
+    r.station = [...seq, ...seq.slice().reverse()];
+  }
   const P = SITES.park;
   r.takeru = [];
   for (let i = 0; i < 16; i++) {
@@ -200,7 +228,7 @@ export class NPC {
         const tgt = this.route[this.ri];
         const dx = tgt[0] - this.pos.x, dz = tgt[1] - this.pos.z;
         const l = Math.hypot(dx, dz);
-        const v = this.def.fast ? 2.6 : 1.15;
+        const v = this.def.fast ? 2.6 : this.def.slow ? 0.8 : 1.15;
         if (l < 0.5) {
           this.ri = (this.ri + 1) % this.route.length;
           if (Math.random() < 0.08) this.pause = 2 + Math.random() * 3;

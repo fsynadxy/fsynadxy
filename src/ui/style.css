@@ -237,7 +237,8 @@ kbd {
 #photoFlash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.6s ease; }
 #photoFlash.on { opacity: 0.85; transition: none; }
 #photoPreview { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(20, 14, 12, 0.6); z-index: 40; flex-direction: column; gap: 14px; }
-#photoPreview img { max-width: 86vw; max-height: 70vh; border: 8px solid #fffdf8; box-shadow: var(--shadow); }
+#photoPreview img { max-width: 86vw; max-height: 70vh; border: 8px solid #fffdf8; box-shadow: var(--shadow); user-select: auto; -webkit-user-select: auto; -webkit-touch-callout: default; pointer-events: auto; }
+#photoPreview .ph-hint { color: #fbf6ef; font-size: 12px; letter-spacing: 0.15em; }
 
 /* ---------- 触屏 ---------- */
 #touch { position: absolute; inset: 0; pointer-events: none; }
@@ -257,6 +258,12 @@ kbd {
 #finale .poem span { display: block; opacity: 0; animation: toastIn 1.4s ease forwards; }
 
 @media (max-width: 640px) {
+  .hud-toasts { top: calc(124px + var(--safe-t)); width: 92vw; }
+  .toast { font-size: 12px; padding: 7px 12px; }
+  .hud-region { top: 26%; width: 92vw; }
+  .hud-region h2 { font-size: 24px; letter-spacing: 0.16em; margin-left: 0.16em; white-space: nowrap; }
+  .hud-region p { letter-spacing: 0.1em; font-size: 12px; }
+  .tt-foot { white-space: normal; width: 88vw; text-align: center; font-size: 10px; line-height: 1.6; }
   .hud-map { width: 112px; height: 112px; }
   .hud-buttons { top: calc(134px + var(--safe-t)); }
   .hud-buttons button kbd { display: none; }

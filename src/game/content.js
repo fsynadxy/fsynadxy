@@ -177,6 +177,18 @@ export const NPCS = [
     ],
   },
   {
+    id: 'walkerA', name: '买东西的人', title: '镇民', look: 'hanamiB', route: 'street', behavior: 'walk',
+    lines: ['樱花季的商店街总是很热闹。', '和菓子店的樱饼，每天下午就卖完了。', '晚上的河边有灯笼，记得去看看。'],
+  },
+  {
+    id: 'walkerB', name: '散步的奶奶', title: '镇民', look: 'granny', route: 'promenade', behavior: 'walk', slow: true,
+    lines: ['每年这个时候，我都要来河边走一走。', '花开的时候走慢一点，才看得清楚。'],
+  },
+  {
+    id: 'walkerC', name: '刚下车的旅人', title: '旅客', look: 'hanamiC', route: 'station', behavior: 'walk',
+    lines: ['刚下电车，先去商店街喝杯茶。', '车窗外全是油菜花和樱花，像是开进了一幅画里。'],
+  },
+  {
     id: 'farmer', name: '田中さん', title: '农夫', look: 'oldman', spot: 'farmer', behavior: 'idle',
     lines: [
       '田里灌了水，再过一个月就插秧了。现在嘛，它们只照着天空。',
