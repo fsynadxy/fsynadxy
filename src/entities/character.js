@@ -147,9 +147,10 @@ function buildBody(look) {
     const y = BP[B.hips][1];
     b.lathe(0, 0, [[0.115, y - 0.07], [0.13, y + 0.02], [0.125, y + 0.12]], 14, look.bottom === 'pants' || look.bottom === 'shorts' ? botC : top);
     if (look.bag) b.box(-0.17, y - 0.05, 0.03, 0.07, 0.17, 0.2, look.bag);
-    if (look.bottom === 'skirt') b.lathe(0, 0, [[0.13, y + 0.06], [0.2, y - 0.12], [0.24, y - 0.3], [0.0, y - 0.3]], 16, botC);
-    if (look.bottom === 'longskirt') b.lathe(0, 0, [[0.13, y + 0.06], [0.2, y - 0.2], [0.25, y - 0.62], [0.0, y - 0.62]], 16, botC);
-    if (look.bottom === 'hakama') b.lathe(0, 0, [[0.14, y + 0.08], [0.23, y - 0.25], [0.29, y - 0.72], [0.0, y - 0.72]], 16, botC);
+    // 旋转体的轮廓须自下而上，表面才朝外（之前写反了，裙子整圈朝内，腿露在裙子前面）
+    if (look.bottom === 'skirt') b.lathe(0, 0, [[0.0, y - 0.3], [0.24, y - 0.3], [0.2, y - 0.12], [0.13, y + 0.06]], 16, botC);
+    if (look.bottom === 'longskirt') b.lathe(0, 0, [[0.0, y - 0.62], [0.25, y - 0.62], [0.2, y - 0.2], [0.13, y + 0.06]], 16, botC);
+    if (look.bottom === 'hakama') b.lathe(0, 0, [[0.0, y - 0.72], [0.29, y - 0.72], [0.23, y - 0.25], [0.14, y + 0.08]], 16, botC);
   }
   // 手臂
   for (const [u, f, sx] of [[B.uArmL, B.fArmL, 1], [B.uArmR, B.fArmR, -1]]) {

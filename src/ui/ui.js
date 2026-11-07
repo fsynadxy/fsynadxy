@@ -210,8 +210,11 @@ export class UI {
     p.classList.remove('off');
     $('span', p).textContent = text;
     $('kbd', p).textContent = k;
+    $('kbd', p).classList.toggle('hidden', this.game.input.isTouch && this.game.input.lastInput !== 'gamepad');
     tb.classList.remove('hidden');
-    tb.textContent = text.length > 6 ? text.slice(0, 6) : text;
+    // 触屏按钮只写动作（「交谈 · 千早」→「交谈」），过长时加省略号
+    const act = text.split(' · ')[0];
+    tb.textContent = act.length > 6 ? act.slice(0, 5) + '…' : act;
   }
   toast(html, dur = 3600) {
     const box = $('.hud-toasts', this.root);

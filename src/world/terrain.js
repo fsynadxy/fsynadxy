@@ -764,7 +764,7 @@ export function createTerrainMaterial() {
           // 树冠是一团团的半球：朝阳一侧亮、背阳一侧暗；远处降低对比，避免闪烁成拼布
           vec3 cn = normalize(vec3(rel.x * 2.4, sqrt(max(0.0, 0.32 - rr * rr)) + 0.2, rel.y * 2.4));
           float lit = clamp(dot(cn, uSunDir) * 0.55 + 0.6, 0.3, 1.25);
-          float farK = smoothstep(250.0, 1100.0, camD);
+          float farK = smoothstep(110.0, 800.0, camD);
           crown = mix(crown, 0.6, farK * 0.7);
           lit = mix(lit, 0.85, farK * 0.6);
           vec3 forestCol = mix(tone * 0.42, tone * lit, crown) * (0.82 + 0.34 * vnoise(p * 0.05));
