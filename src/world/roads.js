@@ -3,7 +3,7 @@ import { ROADS, river, riverHalfWidth, riverWaterLevel, bankLevel, isCanal, FIEL
 import { PAT, C, vary, mulColor } from '../render/builder.js';
 import { RNG, smoothstep, lerp, clamp } from '../core/math.js';
 
-const ROAD_STYLE = {
+export const ROAD_STYLE = {
   asphalt: { color: '#62646a', pat: PAT.ASPHALT, lift: 0.05 },
   stone: { color: '#aaa294', pat: PAT.STONE, lift: 0.07 },
   gravel: { color: '#b9ab92', pat: PAT.GRAVEL, lift: 0.05 },

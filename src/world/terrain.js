@@ -272,19 +272,28 @@ export class Terrain {
     }
     return best;
   }
-  // 某点若落在路面（含商店街这类叠加路面）宽度 + margin 内，返回路面剖面高度，否则 null
-  roadSurfaceAt(x, z, margin = 0) {
+  // 某点若落在路面（含商店街这类叠加路面）宽度 + margin 内，返回 { h: 路面剖面高度, road }，否则 null
+  roadSurfaceInfo(x, z, margin = 0) {
+    let best = null;
     const nr = this.nearestRoad(x, z, 8);
-    if (nr && nr.d < nr.road.width / 2 + margin) return this.roadHeightAt(nr.road, nr.i, nr.t);
+    if (nr && nr.d < nr.road.width / 2 + margin) best = { h: this.roadHeightAt(nr.road, nr.i, nr.t), road: nr.road };
     for (const r of ROADS) {
       if (!r.overlay || !r.h) continue;
       const P = r.pts;
       for (let i = 0; i < P.length - 1; i++) {
         const q = closestOnSegment(x, z, P[i][0], P[i][1], P[i + 1][0], P[i + 1][1]);
-        if (q.d < r.width / 2 + margin) return this.roadHeightAt(r, i, q.t);
+        if (q.d < r.width / 2 + margin) {
+          const h = this.roadHeightAt(r, i, q.t);
+          if (!best || h > best.h) best = { h, road: r };
+          break;
+        }
       }
     }
-    return null;
+    return best;
+  }
+  roadSurfaceAt(x, z, margin = 0) {
+    const r = this.roadSurfaceInfo(x, z, margin);
+    return r ? r.h : null;
   }
   heightFull(x, z) {
     const rq = riverNearest(x, z);
@@ -318,8 +327,11 @@ export class Terrain {
       const wl = riverWaterLevel(rq.s);
       if (isCanal(rq.s)) {
         const bed = wl - 0.95 + 0.12 * noise2(x * 0.3, z * 0.3);
+        const hRoad = h;
         if (rq.d < hw + 1.2) h = bed;
         else if (rq.d < hw + 2.8) h = lerp(bed, h, smoothstep(hw + 1.2, hw + 2.8, rq.d));
+        // 运河边的步道下面不被下切（2 m 网格会把下切摊开到步道底下）
+        if (nr && nr.road.promenade && nr.edge < 0.8 && rq.d > hw + 1.2) h = Math.max(h, hRoad - 0.04);
       } else {
         const bed = wl - 0.55 - 0.2 * smoothstep(hw, 0, rq.d) + 0.15 * noise2(x * 0.25, z * 0.25);
         const t = smoothstep(hw * 0.7, hw + 2.2, rq.d);

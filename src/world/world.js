@@ -455,7 +455,8 @@ export class World {
     if (rb) for (const e of [-1, 1]) gaps.push([rb.cx + Math.cos(rb.rot) * e * (rb.L / 2 - 1), rb.cz - Math.sin(rb.rot) * e * (rb.L / 2 - 1), 3.2]);
     if (ctx.spots.footBridge) {
       const [x, , z, r] = ctx.spots.footBridge;
-      for (const e of [-1, 1]) gaps.push([x + Math.cos(r) * e * 11.5, z - Math.sin(r) * e * 11.5, 2.8]);
+      // 沿整座桥的轴线留出栏杆缺口（河宽各处不同，只在两端留缺口会让栏杆横在桥面上）
+      for (let t = -12; t <= 12; t += 1.5) gaps.push([x + Math.cos(r) * t, z - Math.sin(r) * t, 1.9]);
     }
     const lanterns = buildRiverbanks(ctx.chunks, this.colliders, T, gaps);
     for (const l of lanterns) {

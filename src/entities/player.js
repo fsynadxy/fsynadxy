@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Character } from './character.js';
 import { clamp, damp, dampAngle, lerp } from '../core/math.js';
-import { WORLD, riverNearest, riverHalfWidth, isCanal } from '../world/layout.js';
+import { WORLD, riverNearest, riverHalfWidth, isCanal, bankLevel } from '../world/layout.js';
+import { ROAD_STYLE } from '../world/roads.js';
 
 // 角色控制：加速度移动、碰撞、地面/桥面、浅水、陡坡与地图边界
 // 第一人称时身体朝向视线，模型换成「只投影子」的隐形材质（低头能看见自己的影子）
@@ -49,14 +50,23 @@ export class Player {
     this.vel.set(0, 0, 0);
     this.sync();
   }
+  // 脚下高度：取看得见的表面（路面、运河压顶石、岸顶）与地形网格中较高者；
+  // 2 m 网格在护岸处会把下切摊开，只用网格会让人陷进步道和护岸里
   groundAt(x, z, fromY) {
     const T = this.world.terrain;
     let h = T.heightAt(x, z);
     let tag = null;
-    const s = this.world.colliders.surfaceAt(x, z, fromY, 0.65);
-    if (s.h > h) {
-      h = s.h;
-      tag = s.tag;
+    // 桥、站台、栈桥等可行走表面优先（带标记，桥面可以越过运河）
+    const sf = this.world.colliders.surfaceAt(x, z, fromY, 0.65);
+    if (sf.h > -Infinity && sf.h >= h - 0.05) return { h: Math.max(h, sf.h), tag: sf.tag };
+    const rs = T.roadSurfaceInfo(x, z, 0);
+    if (rs) h = Math.max(h, rs.h + (ROAD_STYLE[rs.road.type] ? ROAD_STYLE[rs.road.type].lift : 0.05) - 0.01);
+    const rq = riverNearest(x, z);
+    if (isCanal(rq.s)) {
+      const e = rq.d - riverHalfWidth(rq.s);
+      const bank = bankLevel(rq.s);
+      if (e > 0.3 && e < 2.42) h = Math.max(h, bank + 0.14); // 压顶石
+      else if (e >= 2.42 && e < 4.4) h = Math.max(h, bank - 0.03);
     }
     return { h, tag };
   }
@@ -114,10 +124,10 @@ export class Player {
       this.vel.z *= 0.2;
       g = this.groundAt(this.pos.x, this.pos.z, this.pos.y);
     }
-    // 运河压顶石与护岸斜面不可站立（桥面除外）
+    // 运河：可以走到栏杆边的压顶石上，但不能越过护岸边缘（桥面除外）
     if (!g.tag) {
       const rq = riverNearest(this.pos.x, this.pos.z);
-      if (isCanal(rq.s) && rq.d < riverHalfWidth(rq.s) + 2.35) {
+      if (isCanal(rq.s) && rq.d < riverHalfWidth(rq.s) + 0.62) {
         this.pos.x = prev.x;
         this.pos.z = prev.z;
         this.vel.x *= 0.2;

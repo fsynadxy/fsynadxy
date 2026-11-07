@@ -90,7 +90,8 @@ export class Input {
       e.preventDefault();
     }, { passive: false });
     el.addEventListener('touchmove', (e) => {
-      const pts = [...e.touches];
+      // 只看落在画面上的手指：按住摇杆或按钮的那根手指不算（否则边走边转会被当成双指缩放）
+      const pts = [...e.targetTouches];
       if (pts.length === 2) {
         const [a, b] = pts;
         const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -111,7 +112,7 @@ export class Input {
     }, { passive: false });
     const end = (e) => {
       for (const t of e.changedTouches) this.touches.delete(t.identifier);
-      if (e.touches.length < 2) this.pinch = null;
+      if (e.targetTouches.length < 2) this.pinch = null;
     };
     el.addEventListener('touchend', end);
     el.addEventListener('touchcancel', end);
